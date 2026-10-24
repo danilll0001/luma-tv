@@ -1,4 +1,8 @@
-# Luma TV
+# Horizon Home
+
+> Horizon Home ist ein Fork von [Luma TV](https://github.com/Hamido212/luma-tv) (MIT, Hamid). Neu in 0.4: Begrüßung mit einstellbarem Namen, russische Oberfläche, neuer Name und neues Logo. Alle Urheberhinweise der Originale bleiben erhalten (siehe LICENSE und NOTICE.md).
+
+# Luma TV (Original-Beschreibung)
 
 **Ein ruhiger Foto-Startbildschirm für Android TV und Google TV.** Uhr, ein schönes Foto und deine Apps in einem Glas-Dock. Kein Werbe-Karussell, keine Empfehlungen, keine Hintergrunddienste.
 
@@ -44,7 +48,7 @@ Du brauchst ADB (Android Platform Tools) und am Fernseher aktiviertes USB- oder 
    ```sh
    adb connect <IP-des-Fernsehers>:5555
    adb install luma-tv-0.3.0-home.apk
-   adb shell cmd package set-home-activity --user 0 de.hamid.lumatv/.stage.StageActivity
+   adb shell cmd package set-home-activity --user 0 de.horizonhome.tv/de.hamid.lumatv.stage.StageActivity
    ```
 3. Home-Taste drücken.
 
@@ -78,8 +82,8 @@ JDK 17, Android SDK Platform 34. Gradle 8.9 und AGP 8.7.3 sind fest eingestellt.
 
 | Variante | Paket | Zweck |
 |---|---|---|
-| `home` | `de.hamid.lumatv` | Startbildschirm mit Home-Filter |
-| `preview` | `de.hamid.lumatv.preview` | normale App zum Testen |
+| `home` | `de.horizonhome.tv` | Startbildschirm mit Home-Filter |
+| `preview` | `de.horizonhome.tv.preview` | normale App zum Testen |
 
 ## Projektaufbau
 

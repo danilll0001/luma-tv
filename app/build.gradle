@@ -4,22 +4,22 @@ android {
     namespace 'de.hamid.lumatv'
     compileSdk 34
     defaultConfig {
-        applicationId 'de.hamid.lumatv'
+        applicationId 'de.horizonhome.tv'
         minSdk 28
         targetSdk 34
-        versionCode 3
-        versionName '0.3.0-stage'
+        versionCode 4
+        versionName '0.4.0-horizon'
     }
     flavorDimensions 'entry'
     productFlavors {
         preview {
             dimension 'entry'
             applicationIdSuffix '.preview'
-            manifestPlaceholders = [appLabel: 'Luma TV Vorschau']
+            manifestPlaceholders = [appLabel: 'Horizon Home Vorschau']
         }
         home {
             dimension 'entry'
-            manifestPlaceholders = [appLabel: 'Luma TV']
+            manifestPlaceholders = [appLabel: 'Horizon Home']
         }
     }
     buildTypes {

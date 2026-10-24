@@ -13,8 +13,8 @@ import de.hamid.lumatv.model.AppEntry;
 
 /** Adapted from TV Detox appList/showAddMenu. No complete system-package inventory. */
 public final class AppCatalog {
-    /** Both Luma variants share this prefix and never show themselves as a tile. */
-    private static final String OWN_PREFIX = "de.hamid.lumatv";
+    /** Both Horizon Home variants share this prefix and never show themselves as a tile. */
+    private static final String OWN_PREFIX = "de.horizonhome.tv";
 
     private AppCatalog() {}
 
