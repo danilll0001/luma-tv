@@ -57,6 +57,7 @@ final class Marks {
         mark("appletv", R.drawable.mark_appletv, 0, 61, 240, 118, .4206f);
         mark("apps", R.drawable.mark_apps, 22, 22, 196, 196, .4222f);
         mark("inputs", R.drawable.mark_inputs, 32, 62, 176, 148, .4f);
+        mark("search", R.drawable.mark_search, 32, 32, 176, 176, .4f);
         mark("crunchyroll", R.drawable.mark_crunchyroll, 0, 0, 240, 240, .5626f);
         mark("dazn", R.drawable.mark_dazn, 0, 0, 240, 240, .4066f);
         mark("disneyplus", R.drawable.mark_disneyplus, 20, 28, 200, 184, .2638f);
@@ -85,6 +86,15 @@ final class Marks {
     }
 
     static String forPackage(String pkg) { return BY_PACKAGE.get(pkg); }
+
+    static boolean has(String id) { return id != null && DRAWABLE.containsKey(id); }
+
+    /** Sorted ids of every bundled mark, for the "change icon" list. */
+    static java.util.List<String> choices() {
+        java.util.List<String> ids = new java.util.ArrayList<>(DRAWABLE.keySet());
+        java.util.Collections.sort(ids);
+        return ids;
+    }
 
     static String label(String pkg, String fallback) {
         String label = LABELS.get(pkg);

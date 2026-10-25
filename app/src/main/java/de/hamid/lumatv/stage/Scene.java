@@ -2,6 +2,7 @@ package de.hamid.lumatv.stage;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.ColorMatrix;
@@ -45,9 +46,11 @@ final class Scene {
             int sample = halfResolution ? 2 : 1;
             Bitmap picture = wall.asset != null
                     ? decode(context, wall.asset, sample, true)
+                    : wall.uri != null ? gpu(decodeUri(context, wall.uri, STAGE_W / sample))
                     : gpu(renderVector(context, wall.vector, STAGE_W / sample, STAGE_H / sample));
             Bitmap small = wall.asset != null
                     ? decode(context, wall.asset, FIELD_SCALE, false)
+                    : wall.uri != null ? decodeUri(context, wall.uri, STAGE_W / FIELD_SCALE)
                     : renderVector(context, wall.vector, STAGE_W / FIELD_SCALE, STAGE_H / FIELD_SCALE);
             if (picture == null || small == null) return null;
             // CSS blur radii at 1920 px (Clear 2, Soft 14, Frost 42) become sigma / 4 here.
@@ -59,6 +62,48 @@ final class Scene {
         } catch (IOException | RuntimeException | OutOfMemoryError failed) {
             return null;
         }
+    }
+
+    /** Full-screen picture for the screensaver. Worker thread; null when it cannot be decoded. */
+    static Bitmap photo(Context context, Walls.Wall wall) {
+        try {
+            if (wall.asset != null) return decode(context, wall.asset, 1, true);
+            if (wall.uri != null) return gpu(decodeUri(context, wall.uri, STAGE_W));
+            return gpu(renderVector(context, wall.vector, STAGE_W, STAGE_H));
+        } catch (IOException | RuntimeException | OutOfMemoryError failed) {
+            return null;
+        }
+    }
+
+    /** Decodes a photo from the media store, crops it to 16:9 and scales it to the given width. */
+    private static Bitmap decodeUri(Context context, String uri, int targetWidth) throws IOException {
+        android.content.ContentResolver resolver = context.getContentResolver();
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream in = resolver.openInputStream(Uri.parse(uri))) {
+            BitmapFactory.decodeStream(in, null, bounds);
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+        int sample = 1;
+        while (bounds.outWidth / (sample * 2) >= targetWidth) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap decoded;
+        try (InputStream in = resolver.openInputStream(Uri.parse(uri))) {
+            decoded = BitmapFactory.decodeStream(in, null, options);
+        }
+        if (decoded == null) return null;
+        int w = decoded.getWidth(), h = decoded.getHeight();
+        int cropW = w, cropH = w * 9 / 16;
+        if (cropH > h) { cropH = h; cropW = h * 16 / 9; }
+        Bitmap cropped = Bitmap.createBitmap(decoded, (w - cropW) / 2, (h - cropH) / 2, cropW, cropH);
+        if (cropped != decoded) decoded.recycle();
+        int targetHeight = targetWidth * 9 / 16;
+        if (cropped.getWidth() == targetWidth && cropped.getHeight() == targetHeight) return cropped;
+        Bitmap scaled = Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true);
+        if (scaled != cropped) cropped.recycle();
+        return scaled;
     }
 
     /** Small gallery picture, 256 x 144. */

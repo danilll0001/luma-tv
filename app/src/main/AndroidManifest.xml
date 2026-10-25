@@ -27,6 +27,9 @@
         <package android:name="com.droidlogic.android.tv" />
         <package android:name="com.google.android.tv.inputplayer" />
     </queries>
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
     <application android:label="${appLabel}" android:allowBackup="false"
         android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@drawable/ic_luma" android:banner="@drawable/tv_banner"

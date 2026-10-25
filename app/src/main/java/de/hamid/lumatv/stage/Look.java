@@ -6,6 +6,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * Committed appearance and the apps on Home, stored locally in the same preferences file as the
@@ -19,6 +21,16 @@ final class Look {
     static final String FOCUS_GLASS = "glass", FOCUS_TYPE = "type";
     static final String MAT_SOFT = "soft", MAT_FROST = "frost", MAT_CLEAR = "clear";
     static final String FONT_MANROPE = "manrope", FONT_GEIST = "geist", FONT_NEWSREADER = "newsreader";
+    static final String FONT_ROBOTO = "roboto", FONT_CONDENSED = "condensed", FONT_SERIF = "serif";
+    static final String ACCENT_WHITE = "white";
+    static final String SRC_BUILTIN = "builtin", SRC_OWN = "own", SRC_BOTH = "both";
+    static final String IN_AUTO = "auto", IN_ALWAYS = "always", IN_NEVER = "never";
+    static final List<String> ACCENTS = Arrays.asList(ACCENT_WHITE, "gold", "coral", "mint", "sky", "lavender");
+    static final List<String> SOURCES = Arrays.asList(SRC_BUILTIN, SRC_OWN, SRC_BOTH);
+    static final List<String> INPUT_MODES = Arrays.asList(IN_AUTO, IN_ALWAYS, IN_NEVER);
+    static final int[] SAVER_CHOICES = {0, 5, 10, 20, 30};
+    private static final int[] ACCENT_BRIGHT = {0xFFF3F3EF, 0xFFF4C969, 0xFFFF9E8A, 0xFF8FE3C0, 0xFF8EC9FF, 0xFFC4B0FF};
+    private static final int[] ACCENT_DEEP = {0xFF1D1A16, 0xFF8A5A00, 0xFF9C3A28, 0xFF1F6B4E, 0xFF1F5A8F, 0xFF4B3A8F};
     static final String ROT_FIXED = "fixed", ROT_OPEN = "open", ROT_5 = "5", ROT_15 = "15", ROT_60 = "60";
 
     static final List<String> BGS = Arrays.asList(BG_PHOTO, BG_LIGHT, BG_DARK);
@@ -26,7 +38,7 @@ final class Look {
     static final List<String> SHOWS = Arrays.asList(SHOW_TEXT, SHOW_ICONS, SHOW_BOTH);
     static final List<String> FOCUSES = Arrays.asList(FOCUS_TYPE, FOCUS_GLASS);
     static final List<String> MATERIALS = Arrays.asList(MAT_SOFT, MAT_FROST, MAT_CLEAR);
-    static final List<String> FONTS = Arrays.asList(FONT_MANROPE, FONT_GEIST, FONT_NEWSREADER);
+    static final List<String> FONTS = Arrays.asList(FONT_MANROPE, FONT_GEIST, FONT_NEWSREADER, FONT_ROBOTO, FONT_CONDENSED, FONT_SERIF);
     static final List<String> ROTATIONS = Arrays.asList(ROT_FIXED, ROT_OPEN, ROT_5, ROT_15, ROT_60);
 
     /** Home holds one to nine apps, like CleanFrame. */
@@ -39,6 +51,9 @@ final class Look {
     private static final String KEY_HOME = "stage_home_v1";
     private static final String KEY_NAME = "stage_user_name_v1";
     private static final String KEY_GREETING = "stage_greeting_v1";
+    private static final String KEY_LABELS = "stage_labels_v1";
+    private static final String KEY_MARKS = "stage_marks_v1";
+    private static final String KEY_MEDIA = "stage_media_pkg_v1";
     private static final String P = "stage_look_";
 
     private static final List<String> DEFAULT_HOME = Arrays.asList(
@@ -47,6 +62,12 @@ final class Look {
 
     String bg, layout, apps, controls, focus, material, font, wallpaper, rotation;
     boolean motion;
+    /** 0 normal, 1 large, 2 extra large. */
+    int clockSize;
+    String accent, photoSource, inputsMode;
+    boolean shuffle, recentFirst;
+    /** Minutes of inactivity before the photo screensaver starts; 0 = off. */
+    int saverMinutes;
     private final SharedPreferences prefs;
 
     Look(SharedPreferences prefs) {
@@ -61,6 +82,13 @@ final class Look {
         rotation = pick("rotation", ROTATIONS, ROT_FIXED);
         wallpaper = Walls.normalize(prefs.getString(P + "wallpaper", Walls.DEFAULT_ID));
         motion = prefs.getBoolean(P + "motion", true);
+        clockSize = Math.max(0, Math.min(2, prefs.getInt(P + "clock_size", 1)));
+        accent = pick("accent", ACCENTS, ACCENT_WHITE);
+        photoSource = pick("photo_source", SOURCES, SRC_BUILTIN);
+        inputsMode = pick("inputs_mode", INPUT_MODES, IN_AUTO);
+        shuffle = prefs.getBoolean(P + "shuffle", false);
+        recentFirst = prefs.getBoolean(P + "recent_first", false);
+        saverMinutes = prefs.getInt(P + "saver", 10);
     }
 
     private String pick(String key, List<String> allowed, String fallback) {
@@ -85,6 +113,97 @@ final class Look {
             default: break;
         }
         return true;
+    }
+
+    // ------------------------------------------------------------------ Horizon Home extras
+
+    boolean setClockSize(int size) {
+        if (!prefs.edit().putInt(P + "clock_size", size).commit()) return false;
+        clockSize = size;
+        return true;
+    }
+
+    boolean setAccent(String value) {
+        if (!ACCENTS.contains(value) || !prefs.edit().putString(P + "accent", value).commit()) return false;
+        accent = value;
+        return true;
+    }
+
+    boolean setPhotoSource(String value) {
+        if (!SOURCES.contains(value) || !prefs.edit().putString(P + "photo_source", value).commit()) return false;
+        photoSource = value;
+        return true;
+    }
+
+    boolean setInputsMode(String value) {
+        if (!INPUT_MODES.contains(value) || !prefs.edit().putString(P + "inputs_mode", value).commit()) return false;
+        inputsMode = value;
+        return true;
+    }
+
+    boolean setShuffle(boolean on) {
+        if (!prefs.edit().putBoolean(P + "shuffle", on).commit()) return false;
+        shuffle = on;
+        return true;
+    }
+
+    boolean setRecentFirst(boolean on) {
+        if (!prefs.edit().putBoolean(P + "recent_first", on).commit()) return false;
+        recentFirst = on;
+        return true;
+    }
+
+    boolean setSaverMinutes(int minutes) {
+        if (!prefs.edit().putInt(P + "saver", minutes).commit()) return false;
+        saverMinutes = minutes;
+        return true;
+    }
+
+    /** Accent colour for focus plates (settings) and the greeting. */
+    int accentColor(boolean lightBackground) {
+        int i = Math.max(0, ACCENTS.indexOf(accent));
+        return lightBackground ? ACCENT_DEEP[i] : ACCENT_BRIGHT[i];
+    }
+
+    boolean accentOn() { return !ACCENT_WHITE.equals(accent); }
+
+    /** Package of the app chosen for USB / network media; null when none. */
+    String mediaPackage() {
+        String pkg = prefs.getString(KEY_MEDIA, "");
+        return pkg == null || pkg.isEmpty() ? null : pkg;
+    }
+
+    boolean setMediaPackage(String pkg) {
+        return prefs.edit().putString(KEY_MEDIA, pkg == null ? "" : pkg).commit();
+    }
+
+    String customLabel(String key) { return customValue(KEY_LABELS, key); }
+
+    String customMark(String key) { return customValue(KEY_MARKS, key); }
+
+    /** An empty value removes the custom label. */
+    boolean setCustomLabel(String key, String value) { return setCustomValue(KEY_LABELS, key, value); }
+
+    boolean setCustomMark(String key, String value) { return setCustomValue(KEY_MARKS, key, value); }
+
+    private String customValue(String store, String key) {
+        try {
+            JSONObject map = new JSONObject(prefs.getString(store, "{}"));
+            String value = map.optString(key, "");
+            return value.isEmpty() ? null : value;
+        } catch (JSONException broken) {
+            return null;
+        }
+    }
+
+    private boolean setCustomValue(String store, String key, String value) {
+        try {
+            JSONObject map = new JSONObject(prefs.getString(store, "{}"));
+            if (value == null || value.isEmpty()) map.remove(key); else map.put(key, value);
+            return prefs.edit().putString(store, map.toString()).commit();
+        } catch (JSONException broken) {
+            return false;
+        }
     }
 
     boolean setMotion(boolean on) {

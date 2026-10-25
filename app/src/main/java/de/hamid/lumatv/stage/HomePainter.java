@@ -19,7 +19,7 @@ import java.util.List;
  */
 final class HomePainter {
     static final int Z_APPS = 0, Z_UTIL = 1, Z_PREVIEW = 2, Z_NONE = 3;
-    static final int UTIL_APPS = 0, UTIL_SETTINGS = 1, UTIL_INPUTS = 2;
+    static final int UTIL_APPS = 0, UTIL_SETTINGS = 1, UTIL_INPUTS = 2, UTIL_SEARCH = 3;
 
     static final float PH_TOP = 220, PH_PITCH = 128;
 
@@ -60,7 +60,7 @@ final class HomePainter {
     private final Paint layer = new Paint();
     private final Paint mask = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
-    private final float[] utilX = new float[3], utilW = new float[3], utilY = new float[3];
+    private final float[] utilX = new float[4], utilW = new float[4], utilY = new float[4];
 
     HomePainter(Gfx g, Type type, Marks marks) {
         this.g = g;
@@ -499,33 +499,37 @@ final class HomePainter {
         int ink;
         if (!f.look.photo()) ink = Color2.fade(Look.BG_LIGHT.equals(f.look.bg) ? 0xFF1D1A16 : 0xFFF6F1E7, .72f);
         else ink = region != null ? region.ink : 0xFFF6F1E7;
-        TextPaint p = homeText(f, Type.CLOCK, 48, -1.5f / 48, ink);
+        float size = 48 + 16 * clampInt(f.look.clockSize, 0, 2);
+        float lh = size * 4f / 3f;
+        float top = (f.look.dock() ? 104 : 144) - lh / 2;
+        TextPaint p = homeText(f, Type.CLOCK, size, -1.5f / 48, ink);
         if (photo) {
             if (region != null && region.pol == Walls.POL_DARK) g.shadow(2, 1, Color2.rgba(255, 248, 236, .24f));
             else g.shadow(3, 1, Color2.rgba(0, 0, 0, .22f));
         }
         if (f.look.dock()) {
-            c.drawText(f.clock, 140, g.baseline(p, 72, 64), p);
+            c.drawText(f.clock, 140, g.baseline(p, top, lh), p);
         } else {
             p.setTextAlign(Paint.Align.RIGHT);
-            c.drawText(f.clock, 1780, g.baseline(p, 112, 64), p);
+            c.drawText(f.clock, 1780, g.baseline(p, top, lh), p);
             p.setTextAlign(Paint.Align.LEFT);
         }
         p.clearShadowLayer();
 
         // Greeting (Horizon Home): a smaller line under the clock. Same ink and shadow as the clock.
         if (f.greeting != null && !f.greeting.isEmpty()) {
-            TextPaint gp = homeText(f, Type.PRIMARY, 30, 0f, Color2.fade(ink, .86f));
+            int greetInk = f.look.accentOn() ? f.look.accentColor(false) : Color2.fade(ink, .86f);
+            TextPaint gp = homeText(f, Type.PRIMARY, 30 + (size - 48) / 4, 0f, greetInk);
             if (photo) {
                 if (region != null && region.pol == Walls.POL_DARK) g.shadow(2, 1, Color2.rgba(255, 248, 236, .24f));
                 else g.shadow(3, 1, Color2.rgba(0, 0, 0, .22f));
             }
             String line = g.ellipsize(f.greeting, 900);
             if (f.look.dock()) {
-                c.drawText(line, 142, g.baseline(gp, 132, 40), gp);
+                c.drawText(line, 142, g.baseline(gp, top + lh + 4, 40), gp);
             } else {
                 gp.setTextAlign(Paint.Align.RIGHT);
-                c.drawText(line, 1780, g.baseline(gp, 172, 40), gp);
+                c.drawText(line, 1780, g.baseline(gp, top + lh + 4, 40), gp);
                 gp.setTextAlign(Paint.Align.LEFT);
             }
             gp.clearShadowLayer();
@@ -586,7 +590,7 @@ final class HomePainter {
                 if (region.pol == Walls.POL_DARK) g.shadow(2, 1, Color2.rgba(255, 248, 236, .24f));
                 else g.shadow(2, 1, Color2.rgba(14, 10, 6, .40f));
             }
-            String glyph = settings ? "settings" : kind == UTIL_INPUTS ? "inputs" : "apps";
+            String glyph = settings ? "settings" : kind == UTIL_INPUTS ? "inputs" : kind == UTIL_SEARCH ? "search" : "apps";
             float iconSize = icons ? 36 : dock ? (settings ? 34 : 32) : (settings ? 34 : 36);
             if (icons) {
                 marks.glyph(c, glyph, x + (64 - iconSize) / 2, y + 32 - iconSize / 2, iconSize, color);

@@ -23,6 +23,9 @@ final class Type {
 
     /** Home face for a role in the given font. */
     Typeface home(String font, int role) {
+        if (Look.FONT_ROBOTO.equals(font)) return system(role == DISPLAY || role == CLOCK ? "sans-serif-light" : "sans-serif");
+        if (Look.FONT_CONDENSED.equals(font)) return system("sans-serif-condensed");
+        if (Look.FONT_SERIF.equals(font)) return system("serif");
         if (Look.FONT_GEIST.equals(font)) {
             return face("Geist", role == DISPLAY || role == CLOCK ? 300 : 400, 0);
         }
@@ -37,6 +40,16 @@ final class Type {
     static float spacing(String font, int role, float manropeEm) {
         if (Look.FONT_MANROPE.equals(font)) return manropeEm;
         return role == DISPLAY || role == CLOCK ? -.01f : 0f;
+    }
+
+    /** Fonts that ship with Android (no files in the app), including Cyrillic. */
+    private Typeface system(String family) {
+        String key = "sys:" + family;
+        Typeface cached = cache.get(key);
+        if (cached != null) return cached;
+        Typeface face = Typeface.create(family, Typeface.NORMAL);
+        cache.put(key, face);
+        return face;
     }
 
     private Typeface face(String family, int weight, int opsz) {

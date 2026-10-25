@@ -1,6 +1,10 @@
 package de.hamid.lumatv.stage;
 
 import de.hamid.lumatv.R;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Wallpaper gallery. Fifteen photographs from CleanFrame (Unsplash Licence, credits in NOTICE.md)
@@ -41,9 +45,12 @@ final class Walls {
         /** Extra left-column shade in the List: 0, 2 or 3. */
         final int listColumn;
         final boolean dockQuiet, clockMist;
+        /** Content URI of a photo from the HorizonHome folder, or null. */
+        final String uri;
 
         Wall(String id, int name, String asset, int vector, boolean lightTone, int appInk,
-             Region tl, Region tr, Region br, float frostVeil, int listColumn, boolean dockQuiet, boolean clockMist) {
+             Region tl, Region tr, Region br, float frostVeil, int listColumn, boolean dockQuiet, boolean clockMist, String uri) {
+            this.uri = uri;
             this.id = id;
             this.name = name;
             this.asset = asset;
@@ -72,11 +79,11 @@ final class Walls {
 
     private static Wall photo(String id, int name, boolean lightTone, int appInk, Region tl, Region tr, Region br,
                               float fv, int lc, boolean quiet, boolean clockMist) {
-        return new Wall(id, name, "wallpapers/" + id + ".jpg", 0, lightTone, appInk, tl, tr, br, fv, lc, quiet, clockMist);
+        return new Wall(id, name, "wallpapers/" + id + ".jpg", 0, lightTone, appInk, tl, tr, br, fv, lc, quiet, clockMist, null);
     }
 
     private static Wall vector(String id, int name, int drawable) {
-        return new Wall(id, name, null, drawable, false, W, clock(W), light(W), light(W), .2f, 0, false, false);
+        return new Wall(id, name, null, drawable, false, W, clock(W), light(W), light(W), .2f, 0, false, false, null);
     }
 
     static final Wall[] ALL = {
@@ -107,9 +114,29 @@ final class Walls {
         return 0;
     }
 
-    static Wall get(String id) { return ALL[indexOf(id)]; }
+    // ------------------------------------------------------------------ own photos
 
-    static String normalize(String id) { return ALL[indexOf(id)].id; }
+    private static final Map<String, Wall> OWN = new LinkedHashMap<>();
+
+    /** Replaces the list of own photos (content URIs from the folder HorizonHome). */
+    static synchronized void setOwn(List<String> uris) {
+        OWN.clear();
+        for (String uri : uris) {
+            String id = "usr:" + uri;
+            OWN.put(id, new Wall(id, R.string.st_own_photo, null, 0, true, W, clock(W), light(W), light(W), .30f, 2, false, true, uri));
+        }
+    }
+
+    static synchronized List<String> ownIds() { return new ArrayList<>(OWN.keySet()); }
+
+    static synchronized Wall get(String id) {
+        Wall own = OWN.get(id);
+        return own != null ? own : ALL[indexOf(id)];
+    }
+
+    static synchronized String normalize(String id) {
+        return OWN.containsKey(id) ? id : ALL[indexOf(id)].id;
+    }
 
     static String next(String id) { return ALL[(indexOf(id) + 1) % ALL.length].id; }
 }

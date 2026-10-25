@@ -51,6 +51,10 @@ final class SheetPainter {
                 k.solidMute = Color2.rgba(29, 26, 22, .68f);
                 k.warn = k.photo ? 0xFFFFD9A8 : 0xFFE8B36A;
             }
+            if (look.accentOn()) {
+                k.solid = look.accentColor(k.light);
+                k.solidInk = k.light ? 0xFFF2EFE8 : 0xFF141618;
+            }
             return k;
         }
     }

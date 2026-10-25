@@ -1,12 +1,15 @@
 package de.hamid.lumatv.stage;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.drawable.Drawable;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
@@ -15,6 +18,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -113,6 +117,7 @@ public final class StageActivity extends Activity implements StageView.Host {
         main.removeCallbacks(clockTick);
         clockTick.run();
         refreshInputs();
+        scanPhotos(false);
         try {
             tvManager = (TvInputManager) getSystemService(Context.TV_INPUT_SERVICE);
             if (tvManager != null) tvManager.registerCallback(inputCallback, main);
@@ -197,11 +202,14 @@ public final class StageActivity extends Activity implements StageView.Host {
         final String own = getPackageName();
         final String ps4 = look.ps4InputId();
         final String ps4Label = getString(R.string.st_ps4_item);
+        final Map<String, String> inputLabels = new LinkedHashMap<>(inputCache);
         worker.execute(() -> {
             List<HomeItem> items = new ArrayList<>();
             for (AppEntry entry : AppCatalog.discover(pm, own)) {
                 String pkg = entry.packageName();
                 String mark = Marks.forPackage(pkg);
+                String pickedMark = look.customMark(pkg);
+                if (Marks.has(pickedMark)) mark = pickedMark;
                 Drawable icon = null;
                 if (mark == null) {
                     try {
@@ -210,10 +218,27 @@ public final class StageActivity extends Activity implements StageView.Host {
                         icon = null;
                     }
                 }
-                items.add(new HomeItem(pkg, Marks.label(pkg, entry.label), entry, null, mark, icon));
+                String customLabel = look.customLabel(pkg);
+                items.add(new HomeItem(pkg, customLabel != null ? customLabel : Marks.label(pkg, entry.label), entry, null, mark, icon));
             }
-            if (ps4 != null) {
-                items.add(new HomeItem(Look.INPUT_PREFIX + ps4, ps4Label, null, ps4, "playstation", null));
+            boolean ps4Listed = false;
+            for (Map.Entry<String, String> input : inputLabels.entrySet()) {
+                String id = input.getKey();
+                String key = Look.INPUT_PREFIX + id;
+                boolean isPs4 = id.equals(ps4);
+                ps4Listed |= isPs4;
+                String pickedMark = look.customMark(key);
+                String mark = Marks.has(pickedMark) ? pickedMark : isPs4 ? "playstation" : "inputs";
+                String customLabel = look.customLabel(key);
+                String label = customLabel != null ? customLabel : isPs4 ? ps4Label : input.getValue();
+                items.add(new HomeItem(key, label, null, id, mark, null));
+            }
+            if (ps4 != null && !ps4Listed) {
+                String key = Look.INPUT_PREFIX + ps4;
+                String pickedMark = look.customMark(key);
+                String customLabel = look.customLabel(key);
+                items.add(new HomeItem(key, customLabel != null ? customLabel : ps4Label, null, ps4,
+                        Marks.has(pickedMark) ? pickedMark : "playstation", null));
             }
             items.sort(Comparator.comparing((HomeItem h) -> h.label, String.CASE_INSENSITIVE_ORDER));
             main.post(() -> {
@@ -295,6 +320,117 @@ public final class StageActivity extends Activity implements StageView.Host {
                 .setNegativeButton(R.string.cancel, null)
                 .setOnDismissListener(dialog -> stage.requestFocus())
                 .show();
+    }
+
+    @Override public void editLabel(String key, String current) {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(28)});
+        input.setText(current);
+        input.setSelection(input.getText().length());
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_rename_title)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    if (look.setCustomLabel(key, input.getText().toString().trim())) catalogChanged();
+                    else toast(getString(R.string.st_save_failed));
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    @Override public void chooseMark(String key) {
+        final List<String> ids = new ArrayList<>(Marks.choices());
+        final String[] names = new String[ids.size() + 1];
+        names[0] = getString(R.string.st_icon_default);
+        for (int i = 0; i < ids.size(); i++) names[i + 1] = ids.get(i);
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_icon_title)
+                .setItems(names, (dialog, which) -> {
+                    if (look.setCustomMark(key, which == 0 ? "" : ids.get(which - 1))) catalogChanged();
+                    else toast(getString(R.string.st_save_failed));
+                })
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    @Override public void searchApps() {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        input.setHint(R.string.st_search_hint);
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_search_title)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> stage.showSearch(input.getText().toString().trim()))
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    @Override public void pickMediaApp() {
+        final List<HomeItem> apps = stage.apps();
+        final String[] names = new String[apps.size() + 1];
+        names[0] = getString(R.string.st_media_none);
+        for (int i = 0; i < apps.size(); i++) names[i + 1] = apps.get(i).label;
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_media_title)
+                .setItems(names, (dialog, which) -> {
+                    if (look.setMediaPackage(which == 0 ? null : apps.get(which - 1).key)) stage.nameChanged();
+                    else toast(getString(R.string.st_save_failed));
+                })
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    private static final int REQ_PHOTOS = 41;
+    private static final String PHOTO_FOLDER = "HorizonHome";
+
+    @Override public void scanPhotos(boolean ask) {
+        final String permission = Build.VERSION.SDK_INT >= 33
+                ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            if (ask) requestPermissions(new String[]{permission}, REQ_PHOTOS);
+            return;
+        }
+        worker.execute(() -> {
+            List<String> found = new ArrayList<>();
+            String[] projection = {MediaStore.Images.Media._ID};
+            try (Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection,
+                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME + "=?", new String[]{PHOTO_FOLDER},
+                    MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+                while (cursor != null && cursor.moveToNext() && found.size() < 80) {
+                    found.add(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(0)).toString());
+                }
+            } catch (RuntimeException unavailable) {
+                // Leave the list empty.
+            }
+            main.post(() -> {
+                if (isDestroyed()) return;
+                Walls.setOwn(found);
+                stage.photosChanged();
+            });
+        });
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_PHOTOS) scanPhotos(false);
+    }
+
+    @Override public List<String> recents() { return recents.read(); }
+
+    @Override public String inputInfo(String inputId) {
+        try {
+            for (TvInputInfo input : HdmiRepository.discover(this)) {
+                if (input.getId().equals(inputId)) return HdmiRepository.describe(this, input);
+            }
+        } catch (RuntimeException unavailable) {
+            // No diagnostics available.
+        }
+        return "";
     }
 
     @Override public void toast(String text) {
