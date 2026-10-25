@@ -56,6 +56,7 @@ final class Marks {
         mark("adguard", R.drawable.mark_adguard, 0, 0, 240, 240, .6769f);
         mark("appletv", R.drawable.mark_appletv, 0, 61, 240, 118, .4206f);
         mark("apps", R.drawable.mark_apps, 22, 22, 196, 196, .4222f);
+        mark("inputs", R.drawable.mark_inputs, 32, 62, 176, 148, .4f);
         mark("crunchyroll", R.drawable.mark_crunchyroll, 0, 0, 240, 240, .5626f);
         mark("dazn", R.drawable.mark_dazn, 0, 0, 240, 240, .4066f);
         mark("disneyplus", R.drawable.mark_disneyplus, 20, 28, 200, 184, .2638f);

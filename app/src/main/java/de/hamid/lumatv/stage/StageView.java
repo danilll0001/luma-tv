@@ -40,7 +40,7 @@ public final class StageView extends View {
 
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
-            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14;
+            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -66,6 +66,8 @@ public final class StageView extends View {
     private final Anim dockOff = new Anim(0), plate = new Anim(0), listOff = new Anim(0), lens = new Anim(0);
     private String clock = "";
     private String greeting = "";
+    /** HDMI inputs with a device plugged in; the Inputs control shows only when this is not empty. */
+    private Map<String, String> connected = new LinkedHashMap<>();
 
     // Scenes
     private Scene scene;
@@ -143,6 +145,31 @@ public final class StageView extends View {
         invalidate();
     }
 
+    /** Plugged-in HDMI inputs (id to label). Shows or hides the Inputs control next to All apps. */
+    public void setConnectedInputs(Map<String, String> inputs) {
+        if (connected.equals(inputs)) return;
+        int[] before = utilKinds();
+        int kind = before[Math.min(util, before.length - 1)];
+        connected = new LinkedHashMap<>(inputs);
+        int[] after = utilKinds();
+        util = after.length - 1;
+        for (int i = 0; i < after.length; i++) if (after[i] == kind) util = i;
+        lens.jump(util);
+        invalidate();
+    }
+
+    /** Visible home controls: All apps, Inputs (only when plugged in), Settings. */
+    private int[] utilKinds() {
+        if (connected.isEmpty()) return new int[]{HomePainter.UTIL_APPS, HomePainter.UTIL_SETTINGS};
+        return new int[]{HomePainter.UTIL_APPS, HomePainter.UTIL_INPUTS, HomePainter.UTIL_SETTINGS};
+    }
+
+    private void openUtil() {
+        int[] kinds = utilKinds();
+        int kind = kinds[Math.min(util, kinds.length - 1)];
+        push(kind == HomePainter.UTIL_APPS ? S_ALL : kind == HomePainter.UTIL_INPUTS ? S_CONNECTED : S_SETTINGS);
+    }
+
     /** Called after the name was changed, so an open settings page shows the new value. */
     public void nameChanged() {
         refreshPage();
@@ -217,7 +244,7 @@ public final class StageView extends View {
 
     private static boolean isPage(int screen) {
         return screen == S_BACKGROUND || screen == S_ROTATION || screen == S_LAYOUT || screen == S_TYPE
-                || screen == S_FOCUS || screen == S_TV || screen == S_INPUTS || screen == S_PS4 || screen == S_CLOCK || screen == S_GREETING;
+                || screen == S_FOCUS || screen == S_TV || screen == S_INPUTS || screen == S_PS4 || screen == S_CLOCK || screen == S_GREETING || screen == S_CONNECTED;
     }
 
     private long dur(long ms) { return look.motion ? ms : 0; }
@@ -379,13 +406,19 @@ public final class StageView extends View {
         f.items = homeItems;
         f.anchor = homeIndex;
         f.zone = homeItems.isEmpty() && zone == HomePainter.Z_APPS ? HomePainter.Z_UTIL : zone;
-        f.util = util;
+        int[] kinds = utilKinds();
+        f.utilKinds = kinds;
+        f.util = Math.min(util, kinds.length - 1);
         f.off = look.dock() ? dockOff.value(now) : listOff.value(now);
         f.plate = plate.value(now);
         f.lens = lens.value(now);
         f.clock = clock;
         f.greeting = greeting;
-        f.utilLabels = new String[]{s(R.string.st_all_apps), s(R.string.st_settings)};
+        f.utilLabels = new String[kinds.length];
+        for (int i = 0; i < kinds.length; i++) {
+            f.utilLabels[i] = kinds[i] == HomePainter.UTIL_APPS ? s(R.string.st_all_apps)
+                    : kinds[i] == HomePainter.UTIL_INPUTS ? s(R.string.st_inputs) : s(R.string.st_settings);
+        }
         f.emptyText = s(R.string.st_home_empty);
         return f;
     }
@@ -605,8 +638,9 @@ public final class StageView extends View {
             case S_TV: {
                 p = new Page(screen, s(R.string.st_settings), s(R.string.st_group_tv), false);
                 p.width = 1056;
-                p.top = 244;
-                p.descHeight = 108;
+                p.top = 212;
+                p.descHeight = 96;
+                p.sectionGap = 24;
                 Page.Section tv = p.section(s(R.string.st_tv_section), false);
                 Page.Opt settings = tv.add(new Page.Opt(s(R.string.st_tv_settings), host::openTvSettings));
                 settings.description = s(R.string.st_tv_settings_desc);
@@ -682,6 +716,22 @@ public final class StageView extends View {
                     o.checked = look.clockMode() == i;
                 }
                 p.hint = s(R.string.st_hint_apply);
+                break;
+            }
+            case S_CONNECTED: {
+                p = new Page(screen, s(R.string.menu_title), s(R.string.st_inputs), false);
+                p.width = 1056;
+                p.top = 260;
+                Page.Section sec = p.section(null, false);
+                for (Map.Entry<String, String> e : connected.entrySet()) {
+                    final String id = e.getKey();
+                    sec.add(new Page.Opt(e.getValue(), () -> host.openInput(id)));
+                }
+                if (connected.isEmpty()) {
+                    Page.Opt none = sec.add(new Page.Opt(s(R.string.inputs_none), null));
+                    none.enabled = false;
+                }
+                p.hint = s(R.string.st_hint_input);
                 break;
             }
             case S_GREETING: {
@@ -1136,9 +1186,9 @@ public final class StageView extends View {
             int next = dock ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_DOWN;
             int toApps = dock ? KeyEvent.KEYCODE_DPAD_DOWN : KeyEvent.KEYCODE_DPAD_LEFT;
             if (key == prev && util > 0) { util--; lens.to(util, dur(140)); }
-            else if (key == next && util < 1) { util++; lens.to(util, dur(140)); }
+            else if (key == next && util < utilKinds().length - 1) { util++; lens.to(util, dur(140)); }
             else if (key == toApps && n > 0) homeZone = HomePainter.Z_APPS;
-            else if (key == KeyEvent.KEYCODE_DPAD_CENTER) push(util == HomePainter.UTIL_APPS ? S_ALL : S_SETTINGS);
+            else if (key == KeyEvent.KEYCODE_DPAD_CENTER) openUtil();
         }
         invalidate();
     }

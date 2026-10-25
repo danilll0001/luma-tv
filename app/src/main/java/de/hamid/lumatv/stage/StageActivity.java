@@ -9,6 +9,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.media.tv.TvInputInfo;
+import android.media.tv.TvInputManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -57,6 +58,14 @@ public final class StageActivity extends Activity implements StageView.Host {
     private long lastLaunch;
     private int catalogToken;
     private Map<String, String> inputCache = new LinkedHashMap<>();
+    private TvInputManager tvManager;
+
+    /** Keeps the Inputs control on Home current while a device is plugged in or removed. */
+    private final TvInputManager.TvInputCallback inputCallback = new TvInputManager.TvInputCallback() {
+        @Override public void onInputStateChanged(String inputId, int state) { refreshInputs(); }
+        @Override public void onInputAdded(String inputId) { refreshInputs(); }
+        @Override public void onInputRemoved(String inputId) { refreshInputs(); }
+    };
 
     private final Runnable clockTick = new Runnable() {
         @Override public void run() {
@@ -103,6 +112,13 @@ public final class StageActivity extends Activity implements StageView.Host {
         resumed = true;
         main.removeCallbacks(clockTick);
         clockTick.run();
+        refreshInputs();
+        try {
+            tvManager = (TvInputManager) getSystemService(Context.TV_INPUT_SERVICE);
+            if (tvManager != null) tvManager.registerCallback(inputCallback, main);
+        } catch (RuntimeException unavailable) {
+            tvManager = null;
+        }
         if (catalogDirty) loadCatalog();
         stage.setHomeVisible(true);
         stage.requestFocus();
@@ -111,6 +127,14 @@ public final class StageActivity extends Activity implements StageView.Host {
     @Override protected void onPause() {
         resumed = false;
         main.removeCallbacks(clockTick);
+        if (tvManager != null) {
+            try {
+                tvManager.unregisterCallback(inputCallback);
+            } catch (RuntimeException unavailable) {
+                // Nothing to undo.
+            }
+            tvManager = null;
+        }
         stage.setHomeVisible(false);
         super.onPause();
     }
@@ -152,12 +176,18 @@ public final class StageActivity extends Activity implements StageView.Host {
 
     private void refreshInputs() {
         Map<String, String> labels = new LinkedHashMap<>();
+        Map<String, String> plugged = new LinkedHashMap<>();
         try {
-            for (TvInputInfo input : HdmiRepository.discover(this)) labels.put(input.getId(), HdmiRepository.label(this, input));
+            for (TvInputInfo input : HdmiRepository.discover(this)) {
+                String label = HdmiRepository.label(this, input);
+                labels.put(input.getId(), label);
+                if (HdmiRepository.connected(this, input)) plugged.put(input.getId(), label);
+            }
         } catch (RuntimeException unavailable) {
             // No TV input service: the inputs page says so.
         }
         inputCache = labels;
+        stage.setConnectedInputs(plugged);
     }
 
     private void loadCatalog() {

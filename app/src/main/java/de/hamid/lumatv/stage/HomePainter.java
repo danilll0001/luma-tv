@@ -19,7 +19,7 @@ import java.util.List;
  */
 final class HomePainter {
     static final int Z_APPS = 0, Z_UTIL = 1, Z_PREVIEW = 2, Z_NONE = 3;
-    static final int UTIL_APPS = 0, UTIL_SETTINGS = 1;
+    static final int UTIL_APPS = 0, UTIL_SETTINGS = 1, UTIL_INPUTS = 2;
 
     static final float PH_TOP = 220, PH_PITCH = 128;
 
@@ -42,6 +42,8 @@ final class HomePainter {
         /** Greeting under the clock; empty when switched off. */
         String greeting;
         String[] utilLabels;
+        /** Kind of each visible control, left to right (or top to bottom): UTIL_*. */
+        int[] utilKinds;
         String emptyText;
     }
 
@@ -58,7 +60,7 @@ final class HomePainter {
     private final Paint layer = new Paint();
     private final Paint mask = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
-    private final float[] utilX = new float[2], utilW = new float[2], utilY = new float[2];
+    private final float[] utilX = new float[3], utilW = new float[3], utilY = new float[3];
 
     HomePainter(Gfx g, Type type, Marks marks) {
         this.g = g;
@@ -540,34 +542,39 @@ final class HomePainter {
         int ink = photo ? region.ink : light ? 0xFF1D1A16 : 0xFFF6F1E7;
         float rest = photo ? region.rest : .62f, peer = photo ? region.peer : light ? .52f : .434f;
         boolean awake = f.zone == Z_UTIL;
+        int n = Math.min(f.utilKinds.length, utilX.length);
         TextPaint p = homeText(f, Type.UI, 28, -.2f / 28, ink);
-        // Measure both controls.
-        for (int i = 0; i < 2; i++) {
-            float icon = i == UTIL_SETTINGS ? 34 : 32;
+        // Measure all controls (Apps, Inputs when something is plugged in, Settings).
+        for (int i = 0; i < n; i++) {
+            boolean settings = f.utilKinds[i] == UTIL_SETTINGS;
+            float icon = settings ? 34 : 32;
             if (icons) utilW[i] = 64;
             else if (text) utilW[i] = 14 + p.measureText(f.utilLabels[i]) + 14;
-            else utilW[i] = 14 + (dock ? icon : 36) + (dock ? 10 : 17.9f) + p.measureText(f.utilLabels[i]) + 14 + (i == UTIL_SETTINGS ? 1 : 0);
+            else utilW[i] = 14 + (dock ? icon : 36) + (dock ? 10 : 17.9f) + p.measureText(f.utilLabels[i]) + 14 + (settings ? 1 : 0);
         }
         if (dock) {
             float right = text ? 1794 : 1798, gap = icons ? 16 : text ? 28 : 20;
-            utilX[1] = right - utilW[1];
-            utilX[0] = utilX[1] - gap - utilW[0];
-            utilY[0] = utilY[1] = 72;
+            utilX[n - 1] = right - utilW[n - 1];
+            for (int i = n - 2; i >= 0; i--) utilX[i] = utilX[i + 1] - gap - utilW[i];
+            for (int i = 0; i < n; i++) utilY[i] = 72;
         } else {
-            for (int i = 0; i < 2; i++) utilX[i] = 1798 - utilW[i];
-            utilY[0] = 840;
-            utilY[1] = 904;
+            for (int i = 0; i < n; i++) {
+                utilX[i] = 1798 - utilW[i];
+                utilY[i] = 904 - (n - 1 - i) * 64;
+            }
         }
         // Glass lens behind the focused control.
         if (awake && f.look.glass()) {
-            int a = clampInt((int) Math.floor(f.lens), 0, 1), b = clampInt(a + 1, 0, 1);
+            int a = clampInt((int) Math.floor(f.lens), 0, n - 1), b = clampInt(a + 1, 0, n - 1);
             float t = f.lens - a;
             float lx = utilX[a] * (1 - t) + utilX[b] * t, lw = utilW[a] * (1 - t) + utilW[b] * t;
             float ly = utilY[a] * (1 - t) + utilY[b] * t + 2;
             if (f.look.photo() && f.scene != null) material(c, f, lx, ly, lw, 60, 30, false);
             else plate(c, f, lx, ly, lw, 60, 30, 1, false);
         }
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < n; i++) {
+            int kind = f.utilKinds[i];
+            boolean settings = kind == UTIL_SETTINGS;
             boolean focus = awake && f.util == i;
             float opacity = focus ? 1 : awake ? peer : rest;
             int color = Color2.fade(ink, opacity);
@@ -579,8 +586,8 @@ final class HomePainter {
                 if (region.pol == Walls.POL_DARK) g.shadow(2, 1, Color2.rgba(255, 248, 236, .24f));
                 else g.shadow(2, 1, Color2.rgba(14, 10, 6, .40f));
             }
-            String glyph = i == UTIL_SETTINGS ? "settings" : "apps";
-            float iconSize = icons ? 36 : dock ? (i == UTIL_SETTINGS ? 34 : 32) : (i == UTIL_SETTINGS ? 34 : 36);
+            String glyph = settings ? "settings" : kind == UTIL_INPUTS ? "inputs" : "apps";
+            float iconSize = icons ? 36 : dock ? (settings ? 34 : 32) : (settings ? 34 : 36);
             if (icons) {
                 marks.glyph(c, glyph, x + (64 - iconSize) / 2, y + 32 - iconSize / 2, iconSize, color);
             } else if (text) {

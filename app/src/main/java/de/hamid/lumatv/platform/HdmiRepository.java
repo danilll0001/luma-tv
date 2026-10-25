@@ -24,6 +24,19 @@ public final class HdmiRepository {
         return result;
     }
 
+    /** True when a device is plugged into this HDMI input (also while the device is in standby). */
+    public static boolean connected(Context context, TvInputInfo input) {
+        TvInputManager manager = (TvInputManager) context.getSystemService(Context.TV_INPUT_SERVICE);
+        if (manager == null) return false;
+        try {
+            int state = manager.getInputState(input.getId());
+            return state == TvInputManager.INPUT_STATE_CONNECTED
+                    || state == TvInputManager.INPUT_STATE_CONNECTED_STANDBY;
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
+
     public static String label(Context context, TvInputInfo input) {
         CharSequence label = input.loadCustomLabel(context);
         if (label == null || label.length() == 0) label = input.loadLabel(context);
