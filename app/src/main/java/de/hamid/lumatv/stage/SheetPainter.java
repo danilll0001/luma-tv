@@ -51,7 +51,13 @@ final class SheetPainter {
                 k.solidMute = Color2.rgba(29, 26, 22, .68f);
                 k.warn = k.photo ? 0xFFFFD9A8 : 0xFFE8B36A;
             }
-            if (look.accentOn()) {
+            if (look.glassUi) {
+                // Translucent glass plates instead of solid ones; text keeps the normal ink.
+                int tint = look.accentOn() ? look.accentColor(k.light) : (k.light ? 0xFF1D1A16 : 0xFFFFFFFF);
+                k.solid = (tint & 0x00FFFFFF) | ((look.accentOn() ? 0x66 : k.light ? 0x1F : 0x38) << 24);
+                k.solidInk = k.ink;
+                k.solidMute = k.mute;
+            } else if (look.accentOn()) {
                 k.solid = look.accentColor(k.light);
                 k.solidInk = k.light ? 0xFFF2EFE8 : 0xFF141618;
             }

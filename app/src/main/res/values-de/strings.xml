@@ -192,11 +192,11 @@
     <string name="st_order">Reihenfolge</string>
     <string name="st_order_seq">Der Reihe nach</string>
     <string name="st_order_shuffle">Zufällig</string>
-    <string name="st_saver">Bildschirmschoner nach</string>
-    <string name="st_minutes">%1$d Min.</string>
+    <string name="st_saver">Bildschirmschoner nach (Minuten)</string>
+    <string name="st_minutes">%1$d</string>
     <string name="st_rescan">Fotos neu einlesen</string>
-    <string name="st_own_found">%1$d Fotos im Ordner HorizonHome</string>
-    <string name="st_own_none">Keine Fotos. Ordner HorizonHome anlegen.</string>
+    <string name="st_own_found">%1$d Fotos</string>
+    <string name="st_own_none">Keine Fotos gefunden</string>
     <string name="st_own_photo">Eigenes Foto</string>
     <string name="st_customize">Apps anpassen</string>
     <string name="st_home_order">Reihenfolge</string>
@@ -256,6 +256,13 @@
         <item>Schlaf gut</item>
         <item>Schöne Nacht</item>
     </string-array>
+    <string name="st_style">Stil und Töne</string>
+    <string name="st_glass">Glas-Optik in den Einstellungen</string>
+    <string name="st_sound">Klicktöne</string>
+    <string name="st_night">Foto nach Sonnenuntergang abdunkeln</string>
+    <string name="st_folders">Fotoordner wählen…</string>
+    <string name="st_folders_all">Alle Ordner</string>
+    <string name="st_folders_n">%1$d Ordner</string>
     <plurals name="st_apps_count">
         <item quantity="one">%d App</item>
         <item quantity="other">%d Apps</item>

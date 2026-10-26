@@ -56,11 +56,13 @@ public final class StageView extends View {
         void editBirthday();
         /** The app language changed; the activity restarts to apply it. */
         void languageChanged();
+        /** Dialog to choose the photo folders used for own photos. */
+        void pickFolders();
     }
 
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
-            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20;
+            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -92,6 +94,7 @@ public final class StageView extends View {
     private String searchQuery = "";
     private boolean homeVisible;
     private String date = "";
+    private boolean night;
     /** Crossfade between two photos on Home. */
     private static final long FADE_MS = 1200;
     private Bitmap fadeFrom;
@@ -104,6 +107,8 @@ public final class StageView extends View {
     private long lastInput = SystemClock.uptimeMillis();
     private long saverFadeStart;
     private int saverToken;
+    private int saverCount;
+    private long saverCurStart, saverNextStart;
     private int swallowKey = -1;
     private String saverId;
     private Bitmap saverCur, saverNext;
@@ -179,6 +184,7 @@ public final class StageView extends View {
     // ------------------------------------------------------------------ public API
 
     public void setClock(String text) {
+        night = look.night && Sun.isNight(System.currentTimeMillis(), 48.49, 9.21);
         if (text.equals(clock)) return;
         clock = text;
         invalidate();
@@ -320,7 +326,7 @@ public final class StageView extends View {
     private static boolean isPage(int screen) {
         return screen == S_BACKGROUND || screen == S_ROTATION || screen == S_LAYOUT || screen == S_TYPE
                 || screen == S_FOCUS || screen == S_TV || screen == S_INPUTS || screen == S_PS4 || screen == S_CLOCK || screen == S_GREETING || screen == S_CONNECTED
-                || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG;
+                || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG || screen == S_STYLE;
     }
 
     private long dur(long ms) { return look.motion ? ms : 0; }
@@ -512,11 +518,15 @@ public final class StageView extends View {
             post(() -> {
                 if (!saverOn || token != saverToken) return;
                 if (picture != null) {
+                    saverCount++;
+                    long shown = SystemClock.uptimeMillis();
                     if (saverCur == null) {
                         saverCur = picture;
+                        saverCurStart = shown;
                     } else {
                         saverNext = picture;
-                        saverFadeStart = SystemClock.uptimeMillis();
+                        saverFadeStart = shown;
+                        saverNextStart = shown;
                     }
                 }
                 postDelayed(saverTick, SAVER_SLIDE_MS);
@@ -529,35 +539,44 @@ public final class StageView extends View {
         c.drawColor(0xFF000000);
         if (saverCur != null) {
             saverPaint.setAlpha(255);
-            drawCover(c, saverCur);
+            drawCover(c, saverCur, now - saverCurStart);
         }
         if (saverNext != null) {
-            float t = Math.min(1f, (now - saverFadeStart) / (float) SAVER_FADE_MS);
-            saverPaint.setAlpha((int) (255 * t));
-            drawCover(c, saverNext);
+            float fade = Math.min(1f, (now - saverFadeStart) / (float) SAVER_FADE_MS);
+            saverPaint.setAlpha((int) (255 * fade));
+            drawCover(c, saverNext, now - saverNextStart);
             saverPaint.setAlpha(255);
-            if (t >= 1f) {
+            if (fade >= 1f) {
                 saverCur = saverNext;
+                saverCurStart = saverNextStart;
                 saverNext = null;
-            } else {
-                postInvalidateOnAnimation();
             }
         }
+        // The clock moves to another corner with every picture.
+        int corner = saverCount % 4;
+        boolean right = corner == 1 || corner == 3, bottom = corner < 2;
         saverText.setTypeface(type.home(look.font, Type.CLOCK));
         saverText.setTextSize(88);
         saverText.setColor(0xF2FFFFFF);
         saverText.setShadowLayer(14, 0, 3, 0x99000000);
-        c.drawText(clock, 120, 975, saverText);
+        saverText.setTextAlign(right ? android.graphics.Paint.Align.RIGHT : android.graphics.Paint.Align.LEFT);
+        c.drawText(clock, right ? 1800 : 120, bottom ? 975 : 160, saverText);
+        postInvalidateOnAnimation();
     }
 
-    private void drawCover(Canvas c, Bitmap b) {
+    /** Fills the screen with the picture and zooms in very slowly (Ken Burns). */
+    private void drawCover(Canvas c, Bitmap b, long age) {
         int bw = b.getWidth(), bh = b.getHeight();
         if (bw <= 0 || bh <= 0) return;
         float scale = Math.max(1920f / bw, 1080f / bh);
         int sw = Math.min(bw, Math.round(1920f / scale)), sh = Math.min(bh, Math.round(1080f / scale));
         int sx = (bw - sw) / 2, sy = (bh - sh) / 2;
         saverSrc.set(sx, sy, sx + sw, sy + sh);
+        float zoom = 1f + .07f * Math.min(1f, Math.max(0, age) / (float) (SAVER_SLIDE_MS + SAVER_FADE_MS));
+        int save = c.save();
+        c.scale(zoom, zoom, saverCount % 2 == 0 ? 800 : 1120, 540);
         c.drawBitmap(b, saverSrc, saverDst, saverPaint);
+        c.restoreToCount(save);
     }
 
     // ------------------------------------------------------------------ rotation
@@ -640,6 +659,7 @@ public final class StageView extends View {
         f.scene = sc;
         f.backdrop = bd;
         f.date = date;
+        f.night = night;
         if (fadeFrom != null) {
             long elapsed = now - fadeStart;
             if (elapsed < FADE_MS) {
@@ -769,6 +789,24 @@ public final class StageView extends View {
         return "Manrope";
     }
 
+    /** A section with the two choices On and Off. */
+    private void toggleSection(Page p, String label, boolean value, java.util.function.Predicate<Boolean> setter) {
+        Page.Section sec = p.section(label, true);
+        Page.Opt on = sec.add(new Page.Opt(s(R.string.st_on), () -> {
+            if (setter.test(true)) refreshPage(); else host.toast(s(R.string.st_save_failed));
+        }));
+        on.checked = value;
+        Page.Opt off = sec.add(new Page.Opt(s(R.string.st_greeting_off), () -> {
+            if (setter.test(false)) refreshPage(); else host.toast(s(R.string.st_save_failed));
+        }));
+        off.checked = !value;
+    }
+
+    private void updateNight() {
+        night = look.night && Sun.isNight(System.currentTimeMillis(), 48.49, 9.21);
+        invalidate();
+    }
+
     private String languageName(String code) {
         if ("de".equals(code)) return "Deutsch";
         if ("en".equals(code)) return "English";
@@ -795,17 +833,6 @@ public final class StageView extends View {
         switch (screen) {
             case S_BACKGROUND: {
                 p = new Page(screen, s(R.string.st_settings), s(R.string.st_background), true);
-                Page.Section type = p.section(s(R.string.st_bg_type), false);
-                String[] bgs = {Look.BG_PHOTO, Look.BG_LIGHT, Look.BG_DARK};
-                int[] names = {R.string.st_bg_photo, R.string.st_bg_light, R.string.st_bg_dark};
-                int[] swatches = {Page.SW_THUMB, Page.SW_LIGHT, Page.SW_DARK};
-                for (int i = 0; i < 3; i++) {
-                    final String v = bgs[i];
-                    Page.Opt o = type.add(new Page.Opt(s(names[i]), () -> apply("bg", v)));
-                    o.checked = v.equals(look.bg);
-                    o.swatch = swatches[i];
-                    o.thumb = look.wallpaper;
-                }
                 Page.Section wall = p.section(s(R.string.st_wallpaper), false);
                 Page.Opt w = wall.add(new Page.Opt(s(Walls.get(look.wallpaper).name), () -> push(S_WALLPAPER)));
                 w.swatch = Page.SW_THUMB;
@@ -896,16 +923,6 @@ public final class StageView extends View {
                 smooth.checked = look.motion;
                 Page.Opt instant = mo.add(new Page.Opt(s(R.string.st_motion_off), () -> { if (look.setMotion(false)) refreshPage(); }));
                 instant.checked = !look.motion;
-                Page.Section ac = p.section(s(R.string.st_accent), true);
-                int[] acNames = {R.string.st_accent_white, R.string.st_accent_gold, R.string.st_accent_coral,
-                        R.string.st_accent_mint, R.string.st_accent_sky, R.string.st_accent_lavender};
-                for (int i = 0; i < Look.ACCENTS.size(); i++) {
-                    final String v = Look.ACCENTS.get(i);
-                    Page.Opt o = ac.add(new Page.Opt(s(acNames[i]), () -> {
-                        if (look.setAccent(v)) refreshPage(); else host.toast(s(R.string.st_save_failed));
-                    }));
-                    o.checked = v.equals(look.accent);
-                }
                 p.hint = s(R.string.st_hint_apply);
                 break;
             }
@@ -920,12 +937,6 @@ public final class StageView extends View {
                 Page.Opt inputs = tv.add(new Page.Opt(s(R.string.st_inputs), () -> push(S_INPUTS)));
                 inputs.forward = true;
                 Page.Section luma = p.section(s(R.string.st_luma_section), false);
-                String ps4Id = look.ps4InputId();
-                Map<String, String> inputLabels = host.inputs();
-                String ps4Value = ps4Id == null ? s(R.string.st_ps4_none)
-                        : inputLabels.containsKey(ps4Id) ? inputLabels.get(ps4Id) : "HDMI";
-                Page.Opt ps4 = luma.add(new Page.Opt(s(R.string.st_ps4) + ": " + ps4Value, () -> push(S_PS4)));
-                ps4.forward = true;
                 Page.Opt lang = luma.add(new Page.Opt(s(R.string.st_language) + ": " + languageName(look.language), () -> push(S_LANG)));
                 lang.forward = true;
                 luma.add(new Page.Opt(s(R.string.st_classic), host::openClassic));
@@ -937,8 +948,38 @@ public final class StageView extends View {
                 greetOpt.forward = true;
                 Page.Opt customize = luma.add(new Page.Opt(s(R.string.st_customize), () -> push(S_APPS)));
                 customize.forward = true;
+                Page.Opt style = luma.add(new Page.Opt(s(R.string.st_style), () -> push(S_STYLE)));
+                style.forward = true;
                 p.footnote = s(R.string.st_credits);
                 p.hint = s(R.string.st_hint_select);
+                break;
+            }
+            case S_STYLE: {
+                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_style), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_glass), look.glassUi, v -> look.setGlassUi(v));
+                toggleSection(p, s(R.string.st_sound), look.sound, v -> look.setSound(v));
+                toggleSection(p, s(R.string.st_night), look.night, v -> {
+                    boolean saved = look.setNight(v);
+                    updateNight();
+                    return saved;
+                });
+                int[] acNames = {R.string.st_accent_white, R.string.st_accent_gold, R.string.st_accent_coral,
+                        R.string.st_accent_mint, R.string.st_accent_sky, R.string.st_accent_lavender};
+                for (int group = 0; group < 2; group++) {
+                    Page.Section ac = p.section(group == 0 ? s(R.string.st_accent) : null, true);
+                    for (int i = group * 3; i < group * 3 + 3; i++) {
+                        final String v = Look.ACCENTS.get(i);
+                        Page.Opt o = ac.add(new Page.Opt(s(acNames[i]), () -> {
+                            if (look.setAccent(v)) refreshPage(); else host.toast(s(R.string.st_save_failed));
+                        }));
+                        o.checked = v.equals(look.accent);
+                    }
+                }
+                p.hint = s(R.string.st_hint_apply);
                 break;
             }
             case S_LANG: {
@@ -1108,9 +1149,12 @@ public final class StageView extends View {
                     o.checked = look.saverMinutes == m;
                 }
                 Page.Section own = p.section(null, false);
-                Page.Opt scan = own.add(new Page.Opt(s(R.string.st_rescan), () -> host.scanPhotos(true)));
+                Page.Opt folderOpt = own.add(new Page.Opt(s(R.string.st_folders), host::pickFolders));
                 int count = Walls.ownIds().size();
-                scan.description = count > 0 ? s(R.string.st_own_found, count) : s(R.string.st_own_none);
+                List<String> chosenFolders = look.photoFolders();
+                String folderText = chosenFolders.isEmpty() ? s(R.string.st_folders_all) : s(R.string.st_folders_n, chosenFolders.size());
+                folderOpt.description = (count > 0 ? s(R.string.st_own_found, count) : s(R.string.st_own_none)) + " \u00b7 " + folderText;
+                folderOpt.forward = true;
                 p.hint = s(R.string.st_hint_apply);
                 break;
             }
@@ -1570,6 +1614,12 @@ public final class StageView extends View {
         if (swallowKey == event.getKeyCode()) {
             if (event.getAction() == KeyEvent.ACTION_UP) swallowKey = -1;
             return true;
+        }
+        if (look.sound && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
+                && (key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
+                || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT
+                || key == KeyEvent.KEYCODE_DPAD_CENTER)) {
+            playSoundEffect(android.view.SoundEffectConstants.CLICK);
         }
         if (!handled(key)) return super.dispatchKeyEvent(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;

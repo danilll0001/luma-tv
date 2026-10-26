@@ -182,11 +182,11 @@
     <string name="st_order">Порядок</string>
     <string name="st_order_seq">По порядку</string>
     <string name="st_order_shuffle">Вперемешку</string>
-    <string name="st_saver">Заставка через</string>
-    <string name="st_minutes">%1$d мин.</string>
+    <string name="st_saver">Заставка через (минуты)</string>
+    <string name="st_minutes">%1$d</string>
     <string name="st_rescan">Обновить список фото</string>
-    <string name="st_own_found">%1$d фото в папке HorizonHome</string>
-    <string name="st_own_none">Нет фото. Создайте папку HorizonHome.</string>
+    <string name="st_own_found">Фото: %1$d</string>
+    <string name="st_own_none">Фото не найдены</string>
     <string name="st_own_photo">Своё фото</string>
     <string name="st_customize">Настроить приложения</string>
     <string name="st_home_order">Порядок</string>
@@ -246,6 +246,13 @@
         <item>Спокойной ночи</item>
         <item>Приятных снов</item>
     </string-array>
+    <string name="st_style">Стиль и звук</string>
+    <string name="st_glass">Стеклянный вид в настройках</string>
+    <string name="st_sound">Звуки нажатия</string>
+    <string name="st_night">Затемнять фото после заката</string>
+    <string name="st_folders">Выбрать папки с фото…</string>
+    <string name="st_folders_all">Все папки</string>
+    <string name="st_folders_n">Папок: %1$d</string>
     <plurals name="st_apps_count">
         <item quantity="one">%d приложение</item>
         <item quantity="few">%d приложения</item>

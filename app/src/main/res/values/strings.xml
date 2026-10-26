@@ -193,11 +193,11 @@
     <string name="st_order">Order</string>
     <string name="st_order_seq">In sequence</string>
     <string name="st_order_shuffle">Shuffle</string>
-    <string name="st_saver">Screensaver after</string>
-    <string name="st_minutes">%1$d min</string>
+    <string name="st_saver">Screensaver after (minutes)</string>
+    <string name="st_minutes">%1$d</string>
     <string name="st_rescan">Scan photos again</string>
-    <string name="st_own_found">%1$d photos in the folder HorizonHome</string>
-    <string name="st_own_none">No photos. Create a folder named HorizonHome.</string>
+    <string name="st_own_found">%1$d photos</string>
+    <string name="st_own_none">No photos found</string>
     <string name="st_own_photo">Own photo</string>
     <string name="st_customize">Customise apps</string>
     <string name="st_home_order">Order</string>
@@ -257,6 +257,13 @@
         <item>Sleep well</item>
         <item>Sweet dreams</item>
     </string-array>
+    <string name="st_style">Style and sound</string>
+    <string name="st_glass">Glass look in settings</string>
+    <string name="st_sound">Click sounds</string>
+    <string name="st_night">Dim photo after sunset</string>
+    <string name="st_folders">Choose photo folders…</string>
+    <string name="st_folders_all">All folders</string>
+    <string name="st_folders_n">%1$d folders</string>
     <plurals name="st_apps_count">
         <item quantity="one">%d app</item>
         <item quantity="other">%d apps</item>

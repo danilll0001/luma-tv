@@ -419,19 +419,27 @@ public final class StageActivity extends Activity implements StageView.Host {
     private static final String PHOTO_FOLDER = "HorizonHome";
 
     @Override public void scanPhotos(boolean ask) {
-        final String permission = Build.VERSION.SDK_INT >= 33
-                ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        final String permission = photoPermission();
         if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
             if (ask) requestPermissions(new String[]{permission}, REQ_PHOTOS);
             return;
         }
+        final List<String> folders = look.photoFolders();
         worker.execute(() -> {
             List<String> found = new ArrayList<>();
-            String[] projection = {MediaStore.Images.Media._ID};
-            try (Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection,
-                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME + "=?", new String[]{PHOTO_FOLDER},
+            StringBuilder where = new StringBuilder(MediaStore.Images.Media.WIDTH + ">=1000 AND "
+                    + MediaStore.Images.Media.HEIGHT + ">=600");
+            String[] args = null;
+            if (!folders.isEmpty()) {
+                where.append(" AND ").append(MediaStore.Images.Media.BUCKET_DISPLAY_NAME).append(" IN (");
+                for (int i = 0; i < folders.size(); i++) where.append(i == 0 ? "?" : ",?");
+                where.append(")");
+                args = folders.toArray(new String[0]);
+            }
+            try (Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    new String[]{MediaStore.Images.Media._ID}, where.toString(), args,
                     MediaStore.Images.Media.DATE_ADDED + " DESC")) {
-                while (cursor != null && cursor.moveToNext() && found.size() < 80) {
+                while (cursor != null && cursor.moveToNext() && found.size() < 300) {
                     found.add(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(0)).toString());
                 }
             } catch (RuntimeException unavailable) {
@@ -443,6 +451,65 @@ public final class StageActivity extends Activity implements StageView.Host {
                 stage.photosChanged();
             });
         });
+    }
+
+    private String photoPermission() {
+        return Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+    }
+
+    @Override public void pickFolders() {
+        final String permission = photoPermission();
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{permission}, REQ_PHOTOS);
+            return;
+        }
+        worker.execute(() -> {
+            Map<String, Integer> counts = new java.util.TreeMap<>();
+            try (Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    new String[]{MediaStore.Images.Media.BUCKET_DISPLAY_NAME},
+                    MediaStore.Images.Media.WIDTH + ">=1000 AND " + MediaStore.Images.Media.HEIGHT + ">=600", null, null)) {
+                while (cursor != null && cursor.moveToNext()) {
+                    String name = cursor.getString(0);
+                    if (name == null) continue;
+                    Integer old = counts.get(name);
+                    counts.put(name, old == null ? 1 : old + 1);
+                }
+            } catch (RuntimeException unavailable) {
+                // Show the empty message below.
+            }
+            main.post(() -> showFolderDialog(counts));
+        });
+    }
+
+    private void showFolderDialog(Map<String, Integer> counts) {
+        if (isDestroyed()) return;
+        if (counts.isEmpty()) {
+            toast(getString(R.string.st_own_none));
+            return;
+        }
+        final List<String> names = new ArrayList<>(counts.keySet());
+        final String[] labels = new String[names.size()];
+        final boolean[] checked = new boolean[names.size()];
+        List<String> current = look.photoFolders();
+        for (int i = 0; i < names.size(); i++) {
+            labels[i] = names.get(i) + " (" + counts.get(names.get(i)) + ")";
+            checked[i] = current.contains(names.get(i));
+        }
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_folders)
+                .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    List<String> chosen = new ArrayList<>();
+                    for (int i = 0; i < names.size(); i++) if (checked[i]) chosen.add(names.get(i));
+                    if (look.setPhotoFolders(chosen)) scanPhotos(false);
+                    else toast(getString(R.string.st_save_failed));
+                })
+                .setNeutralButton(R.string.st_folders_all, (dialog, which) -> {
+                    if (look.setPhotoFolders(new ArrayList<String>())) scanPhotos(false);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {

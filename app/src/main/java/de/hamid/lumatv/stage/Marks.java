@@ -58,6 +58,10 @@ final class Marks {
         mark("apps", R.drawable.mark_apps, 22, 22, 196, 196, .4222f);
         mark("inputs", R.drawable.mark_inputs, 32, 62, 176, 148, .4f);
         mark("search", R.drawable.mark_search, 32, 32, 176, 176, .4f);
+        mark("pc", R.drawable.mark_pc, 32, 42, 176, 156, .4f);
+        mark("gamepad", R.drawable.mark_gamepad, 22, 82, 196, 96, .4f);
+        mark("tv", R.drawable.mark_tv, 22, 47, 196, 156, .4f);
+        mark("receiver", R.drawable.mark_receiver, 17, 87, 206, 86, .4f);
         mark("crunchyroll", R.drawable.mark_crunchyroll, 0, 0, 240, 240, .5626f);
         mark("dazn", R.drawable.mark_dazn, 0, 0, 240, 240, .4066f);
         mark("disneyplus", R.drawable.mark_disneyplus, 20, 28, 200, 184, .2638f);

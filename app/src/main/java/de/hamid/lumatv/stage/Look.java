@@ -55,6 +55,7 @@ final class Look {
     private static final String KEY_LABELS = "stage_labels_v1";
     private static final String KEY_MARKS = "stage_marks_v1";
     private static final String KEY_MEDIA = "stage_media_pkg_v1";
+    private static final String KEY_FOLDERS = "stage_photo_folders_v1";
     private static final String P = "stage_look_";
 
     private static final List<String> DEFAULT_HOME = Arrays.asList(
@@ -66,7 +67,7 @@ final class Look {
     /** 0 normal, 1 large, 2 extra large. */
     int clockSize;
     String accent, photoSource, inputsMode, language;
-    boolean shuffle, recentFirst, dateOn, fade;
+    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night;
     /** Birthday for the greeting; month 0 = not set. */
     int birthMonth, birthDay;
     /** Minutes of inactivity before the photo screensaver starts; 0 = off. */
@@ -75,7 +76,7 @@ final class Look {
 
     Look(SharedPreferences prefs) {
         this.prefs = prefs;
-        bg = pick("bg", BGS, BG_PHOTO);
+        bg = BG_PHOTO; // Hell and Dunkel were removed: the photo background is the only one.
         layout = pick("layout", LAYOUTS, LAYOUT_DOCK);
         apps = pick("apps", SHOWS, SHOW_BOTH);
         controls = pick("controls", SHOWS, SHOW_BOTH);
@@ -95,6 +96,9 @@ final class Look {
         language = pick("language", LANGUAGES, "system");
         dateOn = prefs.getBoolean(P + "date", true);
         fade = prefs.getBoolean(P + "fade", true);
+        glassUi = prefs.getBoolean(P + "glass_ui", true);
+        sound = prefs.getBoolean(P + "sound", true);
+        night = prefs.getBoolean(P + "night", true);
         birthMonth = prefs.getInt(P + "birth_month", 0);
         birthDay = prefs.getInt(P + "birth_day", 0);
     }
@@ -177,6 +181,42 @@ final class Look {
         if (!prefs.edit().putBoolean(P + "date", on).commit()) return false;
         dateOn = on;
         return true;
+    }
+
+    boolean setGlassUi(boolean on) {
+        if (!prefs.edit().putBoolean(P + "glass_ui", on).commit()) return false;
+        glassUi = on;
+        return true;
+    }
+
+    boolean setSound(boolean on) {
+        if (!prefs.edit().putBoolean(P + "sound", on).commit()) return false;
+        sound = on;
+        return true;
+    }
+
+    boolean setNight(boolean on) {
+        if (!prefs.edit().putBoolean(P + "night", on).commit()) return false;
+        night = on;
+        return true;
+    }
+
+    /** Photo folders (media store buckets) used for own photos; empty = every folder. */
+    java.util.List<String> photoFolders() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(prefs.getString(KEY_FOLDERS, "[]"));
+            for (int i = 0; i < array.length(); i++) out.add(array.getString(i));
+        } catch (JSONException broken) {
+            out.clear();
+        }
+        return out;
+    }
+
+    boolean setPhotoFolders(java.util.List<String> names) {
+        JSONArray array = new JSONArray();
+        for (String name : names) array.put(name);
+        return prefs.edit().putString(KEY_FOLDERS, array.toString()).commit();
     }
 
     boolean setFade(boolean on) {

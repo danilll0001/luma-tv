@@ -46,6 +46,8 @@ final class HomePainter {
         /** Previous backdrop and fade progress (0..1) while the photo changes. */
         Bitmap fadeFrom;
         float fade;
+        /** After sunset the photo is dimmed a little. */
+        boolean night;
         String[] utilLabels;
         /** Kind of each visible control, left to right (or top to bottom): UTIL_*. */
         int[] utilKinds;
@@ -208,6 +210,7 @@ final class HomePainter {
                     c.drawBitmap(f.fadeFrom, null, rect, g.bitmap);
                     g.bitmap.setAlpha(255);
                 }
+                if (f.night) c.drawColor(Color2.rgba(0, 0, 0, .24f));
             } else {
                 drawBackdrop(c, f.scene, f.look);
             }
