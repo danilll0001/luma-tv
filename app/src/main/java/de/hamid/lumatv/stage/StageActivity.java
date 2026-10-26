@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.drawable.Drawable;
 import android.media.tv.TvInputInfo;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -85,6 +87,19 @@ public final class StageActivity extends Activity implements StageView.Host {
         }
     };
 
+    /** Applies the app language chosen in the settings (Deutsch, English, Russian) before anything is drawn. */
+    @Override protected void attachBaseContext(Context base) {
+        String code = base.getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_look_language", "system");
+        if (code != null && !"system".equals(code)) {
+            Configuration config = new Configuration(base.getResources().getConfiguration());
+            config.setLocale(new Locale(code));
+            base = base.createConfigurationContext(config);
+        }
+        super.attachBaseContext(base);
+    }
+
+    private int greetVariant;
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         homeVariant = getResources().getBoolean(R.bool.is_home_variant);
@@ -114,6 +129,7 @@ public final class StageActivity extends Activity implements StageView.Host {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        greetVariant = new java.util.Random().nextInt(100);
         main.removeCallbacks(clockTick);
         clockTick.run();
         refreshInputs();
@@ -167,16 +183,28 @@ public final class StageActivity extends Activity implements StageView.Host {
         // CleanFrame shows hours and minutes only, without AM/PM or seconds.
         Calendar now = Calendar.getInstance();
         stage.setClock(DateFormat.format(h24 ? "H:mm" : "h:mm", now).toString());
-        stage.setGreeting(greetingText(now.get(Calendar.HOUR_OF_DAY)));
+        stage.setGreeting(greetingText(now));
+        Locale locale = getResources().getConfiguration().getLocales().get(0);
+        String pattern = DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM");
+        stage.setDate(look.dateOn ? new java.text.SimpleDateFormat(pattern, locale).format(now.getTime()) : "");
     }
 
-    /** "Good evening, Name" by time of day; empty when the greeting is switched off. */
-    private String greetingText(int hour) {
+    /** "Good evening, Name" by time of day (one of several wordings), or a birthday wish; empty when switched off. */
+    private String greetingText(Calendar now) {
         if (!look.greetingOn()) return "";
-        int res = hour < 5 ? R.string.greeting_night : hour < 11 ? R.string.greeting_morning
-                : hour < 17 ? R.string.greeting_day : hour < 22 ? R.string.greeting_evening : R.string.greeting_night;
+        String lead;
+        if (look.birthdaySet() && now.get(Calendar.MONTH) + 1 == look.birthMonth
+                && now.get(Calendar.DAY_OF_MONTH) == look.birthDay) {
+            lead = getString(R.string.greet_birthday);
+        } else {
+            int hour = now.get(Calendar.HOUR_OF_DAY);
+            int arrayId = hour < 5 ? R.array.greet_night : hour < 11 ? R.array.greet_morning
+                    : hour < 17 ? R.array.greet_day : hour < 22 ? R.array.greet_evening : R.array.greet_night;
+            String[] options = getResources().getStringArray(arrayId);
+            lead = options[greetVariant % options.length];
+        }
         String name = look.userName().trim();
-        return name.isEmpty() ? getString(res) : getString(res) + ", " + name;
+        return name.isEmpty() ? lead : lead + ", " + name;
     }
 
     private void refreshInputs() {
@@ -258,6 +286,8 @@ public final class StageActivity extends Activity implements StageView.Host {
         if (!ok) {
             lastLaunch = 0;
             toast(item.isInput() ? getString(R.string.input_unavailable) : getString(R.string.app_unavailable, item.label));
+        } else if (look.motion) {
+            overridePendingTransition(R.anim.launch_in, R.anim.launch_out);
         }
     }
 
@@ -431,6 +461,45 @@ public final class StageActivity extends Activity implements StageView.Host {
             // No diagnostics available.
         }
         return "";
+    }
+
+    @Override public void confirm(String message, Runnable yes) {
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setMessage(message)
+                .setPositiveButton(R.string.st_remove_short, (dialog, which) -> yes.run())
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    @Override public void editBirthday() {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        input.setHint(R.string.st_birthday_hint);
+        if (look.birthdaySet()) input.setText(String.format(Locale.ROOT, "%02d.%02d.", look.birthDay, look.birthMonth));
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_birthday_title)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    java.util.regex.Matcher m = java.util.regex.Pattern
+                            .compile("^(\\d{1,2})\\.(\\d{1,2})\\.?$").matcher(input.getText().toString().trim());
+                    if (!m.matches()) { toast(getString(R.string.st_birthday_invalid)); return; }
+                    int day = Integer.parseInt(m.group(1)), month = Integer.parseInt(m.group(2));
+                    if (month < 1 || month > 12 || day < 1 || day > 31) { toast(getString(R.string.st_birthday_invalid)); return; }
+                    if (look.setBirthday(month, day)) { updateClock(); stage.nameChanged(); }
+                    else toast(getString(R.string.st_save_failed));
+                })
+                .setNeutralButton(R.string.st_birthday_clear, (dialog, which) -> {
+                    if (look.setBirthday(0, 0)) { updateClock(); stage.nameChanged(); }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    @Override public void languageChanged() {
+        recreate();
     }
 
     @Override public void toast(String text) {

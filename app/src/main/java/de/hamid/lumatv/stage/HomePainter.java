@@ -41,6 +41,11 @@ final class HomePainter {
         String clock;
         /** Greeting under the clock; empty when switched off. */
         String greeting;
+        /** Date under the clock; empty when switched off. */
+        String date;
+        /** Previous backdrop and fade progress (0..1) while the photo changes. */
+        Bitmap fadeFrom;
+        float fade;
         String[] utilLabels;
         /** Kind of each visible control, left to right (or top to bottom): UTIL_*. */
         int[] utilKinds;
@@ -198,6 +203,11 @@ final class HomePainter {
             if (f.backdrop != null) {
                 rect.set(0, 0, 1920, 1080);
                 c.drawBitmap(f.backdrop, null, rect, g.bitmap);
+                if (f.fadeFrom != null && f.fade < 1f) {
+                    g.bitmap.setAlpha((int) (255 * (1f - f.fade)));
+                    c.drawBitmap(f.fadeFrom, null, rect, g.bitmap);
+                    g.bitmap.setAlpha(255);
+                }
             } else {
                 drawBackdrop(c, f.scene, f.look);
             }
@@ -516,6 +526,26 @@ final class HomePainter {
         }
         p.clearShadowLayer();
 
+        // Date: a small line under the clock.
+        float lineTop = top + lh + 4;
+        if (f.date != null && !f.date.isEmpty()) {
+            TextPaint dp = homeText(f, Type.PRIMARY, 26, 0f, Color2.fade(ink, .78f));
+            if (photo) {
+                if (region != null && region.pol == Walls.POL_DARK) g.shadow(2, 1, Color2.rgba(255, 248, 236, .24f));
+                else g.shadow(3, 1, Color2.rgba(0, 0, 0, .22f));
+            }
+            String dateLine = g.ellipsize(f.date, 900);
+            if (f.look.dock()) {
+                c.drawText(dateLine, 142, g.baseline(dp, lineTop, 34), dp);
+            } else {
+                dp.setTextAlign(Paint.Align.RIGHT);
+                c.drawText(dateLine, 1780, g.baseline(dp, lineTop, 34), dp);
+                dp.setTextAlign(Paint.Align.LEFT);
+            }
+            dp.clearShadowLayer();
+            lineTop += 38;
+        }
+
         // Greeting (Horizon Home): a smaller line under the clock. Same ink and shadow as the clock.
         if (f.greeting != null && !f.greeting.isEmpty()) {
             int greetInk = f.look.accentOn() ? f.look.accentColor(false) : Color2.fade(ink, .86f);
@@ -526,10 +556,10 @@ final class HomePainter {
             }
             String line = g.ellipsize(f.greeting, 900);
             if (f.look.dock()) {
-                c.drawText(line, 142, g.baseline(gp, top + lh + 4, 40), gp);
+                c.drawText(line, 142, g.baseline(gp, lineTop, 40), gp);
             } else {
                 gp.setTextAlign(Paint.Align.RIGHT);
-                c.drawText(line, 1780, g.baseline(gp, top + lh + 4, 40), gp);
+                c.drawText(line, 1780, g.baseline(gp, lineTop, 40), gp);
                 gp.setTextAlign(Paint.Align.LEFT);
             }
             gp.clearShadowLayer();

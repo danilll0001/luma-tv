@@ -222,6 +222,40 @@
     <string name="st_media_none">Nicht gewählt</string>
     <string name="st_media_title">Medien-App wählen</string>
     <string name="st_media_row_desc">Medien (USB / Netzwerk)</string>
+    <string name="st_language">Sprache</string>
+    <string name="st_lang_system">Automatisch (System)</string>
+    <string name="st_date">Datum</string>
+    <string name="st_on">An</string>
+    <string name="st_fade">Überblendung</string>
+    <string name="st_birthday">Geburtstag</string>
+    <string name="st_birthday_none">Nicht gesetzt</string>
+    <string name="st_birthday_title">Geburtstag (Tag.Monat)</string>
+    <string name="st_birthday_hint">z. B. 25.12.</string>
+    <string name="st_birthday_invalid">Bitte Tag.Monat eingeben, z. B. 25.12.</string>
+    <string name="st_birthday_clear">Löschen</string>
+    <string name="st_confirm_remove">„%1$s“ von Home entfernen?</string>
+    <string name="st_remove_short">Entfernen</string>
+    <string name="greet_birthday">Alles Gute zum Geburtstag</string>
+    <string-array name="greet_morning">
+        <item>Guten Morgen</item>
+        <item>Schönen guten Morgen</item>
+        <item>Moin</item>
+    </string-array>
+    <string-array name="greet_day">
+        <item>Guten Tag</item>
+        <item>Schönen Tag</item>
+        <item>Hallo</item>
+    </string-array>
+    <string-array name="greet_evening">
+        <item>Guten Abend</item>
+        <item>Schönen Abend</item>
+        <item>Hallo</item>
+    </string-array>
+    <string-array name="greet_night">
+        <item>Gute Nacht</item>
+        <item>Schlaf gut</item>
+        <item>Schöne Nacht</item>
+    </string-array>
     <plurals name="st_apps_count">
         <item quantity="one">%d App</item>
         <item quantity="other">%d Apps</item>

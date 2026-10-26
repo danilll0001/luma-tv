@@ -212,6 +212,40 @@
     <string name="st_media_none">Не выбрано</string>
     <string name="st_media_title">Выберите медиа-приложение</string>
     <string name="st_media_row_desc">Медиа (USB / сеть)</string>
+    <string name="st_language">Язык</string>
+    <string name="st_lang_system">Автоматически (система)</string>
+    <string name="st_date">Дата</string>
+    <string name="st_on">Вкл.</string>
+    <string name="st_fade">Плавная смена</string>
+    <string name="st_birthday">День рождения</string>
+    <string name="st_birthday_none">Не задан</string>
+    <string name="st_birthday_title">День рождения (день.месяц)</string>
+    <string name="st_birthday_hint">напр. 25.12.</string>
+    <string name="st_birthday_invalid">Введите день.месяц, например 25.12.</string>
+    <string name="st_birthday_clear">Удалить</string>
+    <string name="st_confirm_remove">Убрать «%1$s» с главного экрана?</string>
+    <string name="st_remove_short">Убрать</string>
+    <string name="greet_birthday">С днём рождения</string>
+    <string-array name="greet_morning">
+        <item>Доброе утро</item>
+        <item>Хорошего утра</item>
+        <item>Привет</item>
+    </string-array>
+    <string-array name="greet_day">
+        <item>Добрый день</item>
+        <item>Хорошего дня</item>
+        <item>Привет</item>
+    </string-array>
+    <string-array name="greet_evening">
+        <item>Добрый вечер</item>
+        <item>Хорошего вечера</item>
+        <item>Привет</item>
+    </string-array>
+    <string-array name="greet_night">
+        <item>Доброй ночи</item>
+        <item>Спокойной ночи</item>
+        <item>Приятных снов</item>
+    </string-array>
     <plurals name="st_apps_count">
         <item quantity="one">%d приложение</item>
         <item quantity="few">%d приложения</item>

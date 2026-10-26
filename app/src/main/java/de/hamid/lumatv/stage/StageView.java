@@ -50,11 +50,17 @@ public final class StageView extends View {
         List<String> recents();
         /** Short diagnostic text for one HDMI input. */
         String inputInfo(String inputId);
+        /** Asks "really?" and runs {@code yes} when the person agrees. */
+        void confirm(String message, Runnable yes);
+        /** Text box for the birthday (day.month). */
+        void editBirthday();
+        /** The app language changed; the activity restarts to apply it. */
+        void languageChanged();
     }
 
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
-            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19;
+            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -85,6 +91,12 @@ public final class StageView extends View {
     private String editKey;
     private String searchQuery = "";
     private boolean homeVisible;
+    private String date = "";
+    /** Crossfade between two photos on Home. */
+    private static final long FADE_MS = 1200;
+    private Bitmap fadeFrom;
+    private long fadeStart;
+    private String backdropWall;
 
     // Photo screensaver: starts after the chosen idle time on Home, any key ends it.
     private static final long SAVER_CHECK_MS = 15000, SAVER_SLIDE_MS = 20000, SAVER_FADE_MS = 1400;
@@ -212,6 +224,13 @@ public final class StageView extends View {
         push(kind == HomePainter.UTIL_APPS ? S_ALL : kind == HomePainter.UTIL_INPUTS ? S_CONNECTED : S_SETTINGS);
     }
 
+    /** Date under the clock; an empty text hides it. */
+    public void setDate(String text) {
+        if (text.equals(date)) return;
+        date = text;
+        invalidate();
+    }
+
     /** Called after the name was changed, so an open settings page shows the new value. */
     public void nameChanged() {
         refreshPage();
@@ -235,6 +254,8 @@ public final class StageView extends View {
         stack.clear();
         stack.add(S_HOME);
         homeZone = homeItems.isEmpty() ? HomePainter.Z_UTIL : HomePainter.Z_APPS;
+        homeIndex = 0;
+        syncHomeScroll(false);
         candidate = null;
         candidateBackdrop = null;
         resumeRotation();
@@ -299,7 +320,7 @@ public final class StageView extends View {
     private static boolean isPage(int screen) {
         return screen == S_BACKGROUND || screen == S_ROTATION || screen == S_LAYOUT || screen == S_TYPE
                 || screen == S_FOCUS || screen == S_TV || screen == S_INPUTS || screen == S_PS4 || screen == S_CLOCK || screen == S_GREETING || screen == S_CONNECTED
-                || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH;
+                || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG;
     }
 
     private long dur(long ms) { return look.motion ? ms : 0; }
@@ -372,7 +393,15 @@ public final class StageView extends View {
         if (scene == null || !look.photo()) return;
         String key = scene.wall.id + "|" + look.layout + "|" + System.identityHashCode(scene);
         if (key.equals(backdropKey)) return;
+        Bitmap previous = backdrop;
         backdrop = homePainter.composeBackdrop(scene, look);
+        String wallId = scene.wall.id;
+        if (look.fade && look.motion && previous != null && backdrop != null
+                && backdropWall != null && !backdropWall.equals(wallId) && top() == S_HOME) {
+            fadeFrom = previous;
+            fadeStart = SystemClock.uptimeMillis();
+        }
+        backdropWall = wallId;
         backdropKey = key;
     }
 
@@ -600,7 +629,7 @@ public final class StageView extends View {
         }
         canvas.restoreToCount(save);
         if (dockOff.running(now) || plate.running(now) || listOff.running(now) || lens.running(now)
-                || allFirst.running(now) || wallFirst.running(now) || edRightFirst.running(now)) {
+                || allFirst.running(now) || wallFirst.running(now) || edRightFirst.running(now) || fadeFrom != null) {
             postInvalidateOnAnimation();
         }
     }
@@ -610,6 +639,16 @@ public final class StageView extends View {
         f.look = look;
         f.scene = sc;
         f.backdrop = bd;
+        f.date = date;
+        if (fadeFrom != null) {
+            long elapsed = now - fadeStart;
+            if (elapsed < FADE_MS) {
+                f.fadeFrom = fadeFrom;
+                f.fade = elapsed / (float) FADE_MS;
+            } else {
+                fadeFrom = null;
+            }
+        }
         f.items = homeItems;
         f.anchor = homeIndex;
         f.zone = homeItems.isEmpty() && zone == HomePainter.Z_APPS ? HomePainter.Z_UTIL : zone;
@@ -728,6 +767,13 @@ public final class StageView extends View {
         if (Look.FONT_CONDENSED.equals(v)) return "Roboto Condensed";
         if (Look.FONT_SERIF.equals(v)) return "Noto Serif";
         return "Manrope";
+    }
+
+    private String languageName(String code) {
+        if ("de".equals(code)) return "Deutsch";
+        if ("en".equals(code)) return "English";
+        if ("ru".equals(code)) return "\u0420\u0443\u0441\u0441\u043a\u0438\u0439";
+        return s(R.string.st_lang_system);
     }
 
     private String clockName(int mode) {
@@ -867,32 +913,49 @@ public final class StageView extends View {
                 p = new Page(screen, s(R.string.st_settings), s(R.string.st_group_tv), false);
                 p.width = 1056;
                 p.top = 212;
-                p.rowHeight = 72;
-                p.descHeight = 96;
+                p.rowHeight = 64;
                 p.sectionGap = 24;
                 Page.Section tv = p.section(s(R.string.st_tv_section), false);
                 tv.add(new Page.Opt(s(R.string.st_tv_settings), host::openTvSettings));
                 Page.Opt inputs = tv.add(new Page.Opt(s(R.string.st_inputs), () -> push(S_INPUTS)));
                 inputs.forward = true;
                 Page.Section luma = p.section(s(R.string.st_luma_section), false);
-                Page.Opt ps4 = luma.add(new Page.Opt(s(R.string.st_ps4), () -> push(S_PS4)));
                 String ps4Id = look.ps4InputId();
                 Map<String, String> inputLabels = host.inputs();
-                ps4.description = ps4Id == null ? s(R.string.st_ps4_none)
-                        : s(R.string.st_ps4_set, inputLabels.containsKey(ps4Id) ? inputLabels.get(ps4Id) : "HDMI");
+                String ps4Value = ps4Id == null ? s(R.string.st_ps4_none)
+                        : inputLabels.containsKey(ps4Id) ? inputLabels.get(ps4Id) : "HDMI";
+                Page.Opt ps4 = luma.add(new Page.Opt(s(R.string.st_ps4) + ": " + ps4Value, () -> push(S_PS4)));
                 ps4.forward = true;
+                Page.Opt lang = luma.add(new Page.Opt(s(R.string.st_language) + ": " + languageName(look.language), () -> push(S_LANG)));
+                lang.forward = true;
                 luma.add(new Page.Opt(s(R.string.st_classic), host::openClassic));
                 Page.Opt clockOpt = luma.add(new Page.Opt(s(R.string.st_clock), () -> push(S_CLOCK)));
-                clockOpt.description = clockName(look.clockMode());
                 clockOpt.forward = true;
-                Page.Opt greetOpt = luma.add(new Page.Opt(s(R.string.st_greeting), () -> push(S_GREETING)));
-                greetOpt.description = !look.greetingOn() ? s(R.string.st_greeting_off)
+                String greetValue = !look.greetingOn() ? s(R.string.st_greeting_off)
                         : look.userName().isEmpty() ? s(R.string.st_name_none) : look.userName();
+                Page.Opt greetOpt = luma.add(new Page.Opt(s(R.string.st_greeting) + ": " + greetValue, () -> push(S_GREETING)));
                 greetOpt.forward = true;
                 Page.Opt customize = luma.add(new Page.Opt(s(R.string.st_customize), () -> push(S_APPS)));
                 customize.forward = true;
                 p.footnote = s(R.string.st_credits);
                 p.hint = s(R.string.st_hint_select);
+                break;
+            }
+            case S_LANG: {
+                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_language), false);
+                p.width = 1056;
+                p.top = 260;
+                p.rowHeight = 88;
+                Page.Section sec = p.section(null, false);
+                for (String code : Look.LANGUAGES) {
+                    final String v = code;
+                    Page.Opt o = sec.add(new Page.Opt(languageName(v), () -> {
+                        if (v.equals(look.language)) return;
+                        if (look.setLanguage(v)) host.languageChanged(); else host.toast(s(R.string.st_save_failed));
+                    }));
+                    o.checked = v.equals(look.language);
+                }
+                p.hint = s(R.string.st_hint_apply);
                 break;
             }
             case S_INPUTS: {
@@ -970,6 +1033,15 @@ public final class StageView extends View {
                     }));
                     o.checked = look.clockSize == i;
                 }
+                Page.Section dt = p.section(s(R.string.st_date), true);
+                Page.Opt dateYes = dt.add(new Page.Opt(s(R.string.st_on), () -> {
+                    if (look.setDateOn(true)) { host.catalogChanged(); refreshPage(); }
+                }));
+                dateYes.checked = look.dateOn;
+                Page.Opt dateNo = dt.add(new Page.Opt(s(R.string.st_greeting_off), () -> {
+                    if (look.setDateOn(false)) { host.catalogChanged(); refreshPage(); }
+                }));
+                dateNo.checked = !look.dateOn;
                 p.hint = s(R.string.st_hint_apply);
                 break;
             }
@@ -1000,6 +1072,8 @@ public final class StageView extends View {
                 p = new Page(screen, s(R.string.st_background), s(R.string.st_slideshow), false);
                 p.width = 1056;
                 p.top = 212;
+                p.rowHeight = 76;
+                p.descHeight = 100;
                 p.sectionGap = 24;
                 Page.Section src = p.section(s(R.string.st_photo_source), true);
                 int[] srcNames = {R.string.st_src_builtin, R.string.st_src_own, R.string.st_src_both};
@@ -1019,6 +1093,11 @@ public final class StageView extends View {
                     if (look.setShuffle(true)) refreshPage();
                 }));
                 shuf.checked = look.shuffle;
+                Page.Section fd = p.section(s(R.string.st_fade), true);
+                Page.Opt fadeOn = fd.add(new Page.Opt(s(R.string.st_on), () -> { if (look.setFade(true)) refreshPage(); }));
+                fadeOn.checked = look.fade;
+                Page.Opt fadeOff = fd.add(new Page.Opt(s(R.string.st_greeting_off), () -> { if (look.setFade(false)) refreshPage(); }));
+                fadeOff.checked = !look.fade;
                 Page.Section sav = p.section(s(R.string.st_saver), true);
                 for (int minutes : Look.SAVER_CHOICES) {
                     final int m = minutes;
@@ -1125,6 +1204,10 @@ public final class StageView extends View {
                 Page.Section nm = p.section(s(R.string.st_name_section), false);
                 Page.Opt name = nm.add(new Page.Opt(s(R.string.st_name_edit), host::editName));
                 name.description = look.userName().isEmpty() ? s(R.string.st_name_none) : look.userName();
+                Page.Opt birth = nm.add(new Page.Opt(s(R.string.st_birthday), host::editBirthday));
+                birth.description = look.birthdaySet()
+                        ? String.format(java.util.Locale.ROOT, "%02d.%02d.", look.birthDay, look.birthMonth)
+                        : s(R.string.st_birthday_none);
                 p.hint = s(R.string.st_hint_apply);
                 break;
             }
@@ -1305,7 +1388,14 @@ public final class StageView extends View {
         List<String> keys = look.homeKeys();
         if (keys.contains(item.key)) {
             if (keys.size() <= 1) { host.toast(s(R.string.st_home_last)); return; }
-            keys.remove(item.key);
+            host.confirm(s(R.string.st_confirm_remove, item.label), () -> {
+                List<String> now = look.homeKeys();
+                now.remove(item.key);
+                if (!look.saveHomeKeys(now)) { host.toast(s(R.string.st_save_failed)); return; }
+                rebuildHome();
+                invalidate();
+            });
+            return;
         } else {
             if (keys.size() >= Look.HOME_MAX) { host.toast(s(R.string.st_home_full)); return; }
             keys.add(item.key);
@@ -1409,13 +1499,17 @@ public final class StageView extends View {
                 else if (key == KeyEvent.KEYCODE_DPAD_DOWN && edLeft < n - 1) edLeft++;
                 else if (key == KeyEvent.KEYCODE_DPAD_CENTER) {
                     if (n <= 1) { edMessage = s(R.string.st_home_last); edMessageWarn = true; break; }
-                    List<HomeItem> items = new ArrayList<>(homeItems);
-                    items.remove(edLeft);
-                    if (saveOrder(items)) {
-                        rebuildHome();
-                        edLeft = Math.min(edLeft, homeItems.size() - 1);
-                        edMessage = null;
-                    }
+                    final HomeItem leaving = homeItems.get(edLeft);
+                    host.confirm(s(R.string.st_confirm_remove, leaving.label), () -> {
+                        List<HomeItem> items = new ArrayList<>(homeItems);
+                        items.remove(leaving);
+                        if (saveOrder(items)) {
+                            rebuildHome();
+                            edLeft = Math.max(0, Math.min(edLeft, homeItems.size() - 1));
+                            edMessage = null;
+                            invalidate();
+                        }
+                    });
                 }
                 break;
             case ED_RIGHT:

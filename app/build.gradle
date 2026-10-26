@@ -7,8 +7,8 @@ android {
         applicationId 'de.horizonhome.tv'
         minSdk 28
         targetSdk 34
-        versionCode 6
-        versionName '0.5.0-horizon'
+        versionCode 7
+        versionName '0.6.0-horizon'
     }
     flavorDimensions 'entry'
     productFlavors {
@@ -20,6 +20,15 @@ android {
         home {
             dimension 'entry'
             manifestPlaceholders = [appLabel: 'Horizon Home']
+        }
+    }
+    signingConfigs {
+        // Same key on every build, so a new APK installs over the old one and keeps its settings.
+        debug {
+            storeFile file('horizon-debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
         }
     }
     buildTypes {

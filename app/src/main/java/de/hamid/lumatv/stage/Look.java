@@ -29,6 +29,7 @@ final class Look {
     static final List<String> SOURCES = Arrays.asList(SRC_BUILTIN, SRC_OWN, SRC_BOTH);
     static final List<String> INPUT_MODES = Arrays.asList(IN_AUTO, IN_ALWAYS, IN_NEVER);
     static final int[] SAVER_CHOICES = {0, 5, 10, 20, 30};
+    static final List<String> LANGUAGES = Arrays.asList("system", "de", "en", "ru");
     private static final int[] ACCENT_BRIGHT = {0xFFF3F3EF, 0xFFF4C969, 0xFFFF9E8A, 0xFF8FE3C0, 0xFF8EC9FF, 0xFFC4B0FF};
     private static final int[] ACCENT_DEEP = {0xFF1D1A16, 0xFF8A5A00, 0xFF9C3A28, 0xFF1F6B4E, 0xFF1F5A8F, 0xFF4B3A8F};
     static final String ROT_FIXED = "fixed", ROT_OPEN = "open", ROT_5 = "5", ROT_15 = "15", ROT_60 = "60";
@@ -64,8 +65,10 @@ final class Look {
     boolean motion;
     /** 0 normal, 1 large, 2 extra large. */
     int clockSize;
-    String accent, photoSource, inputsMode;
-    boolean shuffle, recentFirst;
+    String accent, photoSource, inputsMode, language;
+    boolean shuffle, recentFirst, dateOn, fade;
+    /** Birthday for the greeting; month 0 = not set. */
+    int birthMonth, birthDay;
     /** Minutes of inactivity before the photo screensaver starts; 0 = off. */
     int saverMinutes;
     private final SharedPreferences prefs;
@@ -89,6 +92,11 @@ final class Look {
         shuffle = prefs.getBoolean(P + "shuffle", false);
         recentFirst = prefs.getBoolean(P + "recent_first", false);
         saverMinutes = prefs.getInt(P + "saver", 10);
+        language = pick("language", LANGUAGES, "system");
+        dateOn = prefs.getBoolean(P + "date", true);
+        fade = prefs.getBoolean(P + "fade", true);
+        birthMonth = prefs.getInt(P + "birth_month", 0);
+        birthDay = prefs.getInt(P + "birth_day", 0);
     }
 
     private String pick(String key, List<String> allowed, String fallback) {
@@ -158,6 +166,34 @@ final class Look {
         saverMinutes = minutes;
         return true;
     }
+
+    boolean setLanguage(String value) {
+        if (!LANGUAGES.contains(value) || !prefs.edit().putString(P + "language", value).commit()) return false;
+        language = value;
+        return true;
+    }
+
+    boolean setDateOn(boolean on) {
+        if (!prefs.edit().putBoolean(P + "date", on).commit()) return false;
+        dateOn = on;
+        return true;
+    }
+
+    boolean setFade(boolean on) {
+        if (!prefs.edit().putBoolean(P + "fade", on).commit()) return false;
+        fade = on;
+        return true;
+    }
+
+    /** month 0 clears the birthday. */
+    boolean setBirthday(int month, int day) {
+        if (!prefs.edit().putInt(P + "birth_month", month).putInt(P + "birth_day", day).commit()) return false;
+        birthMonth = month;
+        birthDay = day;
+        return true;
+    }
+
+    boolean birthdaySet() { return birthMonth > 0; }
 
     /** Accent colour for focus plates (settings) and the greeting. */
     int accentColor(boolean lightBackground) {
