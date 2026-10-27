@@ -151,11 +151,25 @@ public final class DashboardActivity extends Activity {
         }
     }
 
+    /** The language chosen in Juke TV's settings also applies here. */
+    @Override protected void attachBaseContext(Context base) {
+        String code = base.getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_look_language", "system");
+        if (code != null && !"system".equals(code)) {
+            android.content.res.Configuration config = new android.content.res.Configuration(base.getResources().getConfiguration());
+            config.setLocale(new Locale(code));
+            base = base.createConfigurationContext(config);
+        }
+        super.attachBaseContext(base);
+    }
+
+    private final int greetVariant = new java.util.Random().nextInt(100);
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         // Since 0.3 the classic dashboard is a secondary screen opened from Luma's Settings;
         // Home belongs to StageActivity, so Back simply closes this view.
-        homeVariant = false;
+        // In the classic view chosen as Home (see Settings in Juke TV) Back stays on this screen.
+        homeVariant = "classic".equals(getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_look_ui_mode", "new"));
         density = getResources().getDisplayMetrics().density;
         SharedPreferences prefs = getSharedPreferences("luma_home", MODE_PRIVATE);
         config = new HomeConfigStore(prefs);
@@ -337,9 +351,23 @@ public final class DashboardActivity extends Activity {
     private void updateGreeting() {
         Calendar now = Calendar.getInstance();
         int hour = now.get(Calendar.HOUR_OF_DAY);
-        int text = hour < 5 ? R.string.greeting_night : hour < 11 ? R.string.greeting_morning
-                : hour < 17 ? R.string.greeting_day : hour < 22 ? R.string.greeting_evening : R.string.greeting_night;
-        greeting.setText(text);
+        SharedPreferences shared = getSharedPreferences("luma_home", MODE_PRIVATE);
+        String line = "";
+        if (shared.getBoolean("stage_greeting_v1", true)) {
+            String lead;
+            if (shared.getInt("stage_look_birth_month", 0) == now.get(Calendar.MONTH) + 1
+                    && shared.getInt("stage_look_birth_day", -1) == now.get(Calendar.DAY_OF_MONTH)) {
+                lead = getString(R.string.greet_birthday);
+            } else {
+                int arrayId = hour < 5 ? R.array.greet_night : hour < 11 ? R.array.greet_morning
+                        : hour < 17 ? R.array.greet_day : hour < 22 ? R.array.greet_evening : R.array.greet_night;
+                String[] options = getResources().getStringArray(arrayId);
+                lead = options[greetVariant % options.length];
+            }
+            String name = shared.getString("stage_user_name_v1", "").trim();
+            line = name.isEmpty() ? lead : lead + ", " + name;
+        }
+        greeting.setText(line);
         main.removeCallbacks(greetingTick);
         if (resumed) {
             long untilNextHour = (60 - now.get(Calendar.MINUTE)) * 60_000L - now.get(Calendar.SECOND) * 1000L + 500L;
@@ -945,11 +973,74 @@ public final class DashboardActivity extends Activity {
             labels.add(getString(R.string.menu_hidden, hidden.size()));
             actions.add(this::showHidden);
         }
-        labels.add(getString(config.ps4InputId() == null ? R.string.input_assign_ps4 : R.string.input_change_ps4));
-        actions.add(this::choosePs4Input);
+        SharedPreferences shared = getSharedPreferences("luma_home", MODE_PRIVATE);
+        final boolean greetingOn = shared.getBoolean("stage_greeting_v1", true);
+        String savedName = shared.getString("stage_user_name_v1", "").trim();
+        labels.add(getString(R.string.st_language) + ": " + languageLabel(shared.getString("stage_look_language", "system")));
+        actions.add(this::chooseLanguage);
+        labels.add(getString(R.string.st_greeting) + ": " + getString(greetingOn ? R.string.st_on : R.string.st_greeting_off));
+        actions.add(() -> {
+            getSharedPreferences("luma_home", MODE_PRIVATE).edit().putBoolean("stage_greeting_v1", !greetingOn).commit();
+            updateGreeting();
+        });
+        labels.add(getString(R.string.st_name_edit) + " " + (savedName.isEmpty() ? "" : "(" + savedName + ")"));
+        actions.add(this::promptName);
+        labels.add(getString(R.string.st_view_new));
+        actions.add(this::switchToNewView);
         labels.add(getString(R.string.menu_reset));
         actions.add(this::confirmReset);
         showList(getString(R.string.menu_title), labels, actions);
+    }
+
+    private static String languageName(String code) {
+        if ("de".equals(code)) return "Deutsch";
+        if ("en".equals(code)) return "English";
+        if ("ru".equals(code)) return "\u0420\u0443\u0441\u0441\u043a\u0438\u0439";
+        return null;
+    }
+
+    private String languageLabel(String code) {
+        String name = languageName(code);
+        return name != null ? name : getString(R.string.st_lang_system);
+    }
+
+    private void chooseLanguage() {
+        final String[] codes = {"system", "de", "en", "ru"};
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (final String code : codes) {
+            String name = languageName(code);
+            labels.add(name != null ? name : getString(R.string.st_lang_system));
+            actions.add(() -> {
+                getSharedPreferences("luma_home", MODE_PRIVATE).edit().putString("stage_look_language", code).commit();
+                recreate();
+            });
+        }
+        showList(getString(R.string.st_language), labels, actions);
+    }
+
+    private void promptName() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setSingleLine(true);
+        input.setText(getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_user_name_v1", ""));
+        input.setSelection(input.getText().length());
+        dismissDialog();
+        dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.st_name_title)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (d, which) -> {
+                    getSharedPreferences("luma_home", MODE_PRIVATE).edit()
+                            .putString("stage_user_name_v1", input.getText().toString().trim()).commit();
+                    updateGreeting();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    /** Back to the new Juke TV view. */
+    private void switchToNewView() {
+        getSharedPreferences("luma_home", MODE_PRIVATE).edit().putString("stage_look_ui_mode", "new").commit();
+        finish();
     }
 
     private String clockName(int mode) {

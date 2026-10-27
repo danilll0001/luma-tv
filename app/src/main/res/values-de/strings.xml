@@ -36,7 +36,7 @@
     <string name="hidden_toast">„%1$s“ ist ausgeblendet. Wieder einblenden unter Einstellungen &amp; Anpassen.</string>
     <string name="hidden_title">Wieder einblenden</string>
 
-    <string name="menu_title">Horizon Home</string>
+    <string name="menu_title">Juke TV</string>
     <string name="menu_tv_settings">TV-Einstellungen öffnen</string>
     <string name="menu_clock">Uhr: %1$s</string>
     <string name="menu_recents_hide">„Zuletzt genutzt“ ausblenden</string>
@@ -75,8 +75,8 @@
     <string name="st_typography">Schrift</string>
     <string name="st_focus">Fokus</string>
     <string name="st_group_apps">Apps auf Home</string>
-    <string name="st_group_tv">TV &amp; Horizon</string>
-    <string name="st_tv_value">TV-Einstellungen, Eingänge, PS4, Uhr, Begrüßung</string>
+    <string name="st_group_tv">TV &amp; Juke</string>
+    <string name="st_tv_value">TV-Einstellungen, Eingänge, Uhr, Begrüßung</string>
     <string name="st_hint_open">Ausgewählte Gruppe öffnen</string>
     <string name="st_hint_apply">Auswahl übernehmen</string>
     <string name="st_hint_photo">Ausgewähltes Foto übernehmen</string>
@@ -134,14 +134,14 @@
     <string name="st_tv_settings_desc">Bild, Ton, Netzwerk und System</string>
     <string name="st_inputs">Eingänge</string>
     <string name="st_inputs_desc">Direkt zu einer HDMI-Quelle wechseln</string>
-    <string name="st_luma_section">Horizon Home</string>
+    <string name="st_luma_section">Juke TV</string>
     <string name="st_ps4">PS4-Eingang</string>
     <string name="st_ps4_none">Nicht zugeordnet</string>
     <string name="st_ps4_set">%1$s · erscheint als PlayStation auf Home</string>
     <string name="st_ps4_question">An welchem Eingang hängt die PS4?</string>
     <string name="st_ps4_item">PlayStation</string>
     <string name="st_classic">Klassische Ansicht</string>
-    <string name="st_classic_desc">Kategorie-Reihen von Horizon Home im japanischen Stil</string>
+    <string name="st_classic_desc">Kategorie-Reihen von Juke TV im japanischen Stil</string>
     <string name="st_clock">Uhr</string>
     <string name="st_clock_system">System</string>
     <string name="st_clock_24">24 Stunden</string>
@@ -294,6 +294,11 @@
     <string name="st_folder_empty">Ordner ist leer</string>
     <string name="st_folder_full">Ein Ordner fasst bis zu 8 Apps</string>
     <string name="st_folders_full">Höchstens 6 Ordner</string>
+    <string name="st_icons_glass">Durchsichtige Symbole</string>
+    <string name="st_photos_pick">Eigene Fotos wählen…</string>
+    <string name="st_photos_title">Fotos auswählen (OK hakt an)</string>
+    <string name="st_picked_n">%1$d Fotos ausgewählt</string>
+    <string name="st_view_new">Zur neuen Ansicht wechseln</string>
     <plurals name="st_apps_count">
         <item quantity="one">%d App</item>
         <item quantity="other">%d Apps</item>

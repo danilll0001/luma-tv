@@ -7,19 +7,19 @@ android {
         applicationId 'de.horizonhome.tv'
         minSdk 28
         targetSdk 34
-        versionCode 9
-        versionName '0.8.0-horizon'
+        versionCode 10
+        versionName '0.9.0-juke'
     }
     flavorDimensions 'entry'
     productFlavors {
         preview {
             dimension 'entry'
             applicationIdSuffix '.preview'
-            manifestPlaceholders = [appLabel: 'Horizon Home Vorschau']
+            manifestPlaceholders = [appLabel: 'Juke TV Vorschau']
         }
         home {
             dimension 'entry'
-            manifestPlaceholders = [appLabel: 'Horizon Home']
+            manifestPlaceholders = [appLabel: 'Juke TV']
         }
     }
     signingConfigs {

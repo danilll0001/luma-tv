@@ -37,7 +37,7 @@
     <string name="hidden_toast">“%1$s” is hidden. Show it again under Settings &amp; customize.</string>
     <string name="hidden_title">Show again</string>
 
-    <string name="menu_title">Horizon Home</string>
+    <string name="menu_title">Juke TV</string>
     <string name="menu_tv_settings">Open TV settings</string>
     <string name="menu_clock">Clock: %1$s</string>
     <string name="menu_recents_hide">Hide “Recently used”</string>
@@ -76,8 +76,8 @@
     <string name="st_typography">Typography</string>
     <string name="st_focus">Focus</string>
     <string name="st_group_apps">Apps on Home</string>
-    <string name="st_group_tv">TV &amp; Horizon</string>
-    <string name="st_tv_value">TV settings, inputs, PS4, clock, greeting</string>
+    <string name="st_group_tv">TV &amp; Juke</string>
+    <string name="st_tv_value">TV settings, inputs, clock, greeting</string>
     <string name="st_hint_open">Open selected group</string>
     <string name="st_hint_apply">Apply selected setting</string>
     <string name="st_hint_photo">Apply selected photo</string>
@@ -135,14 +135,14 @@
     <string name="st_tv_settings_desc">Picture, sound, network and system</string>
     <string name="st_inputs">Inputs</string>
     <string name="st_inputs_desc">Switch straight to an HDMI source</string>
-    <string name="st_luma_section">Horizon Home</string>
+    <string name="st_luma_section">Juke TV</string>
     <string name="st_ps4">PS4 input</string>
     <string name="st_ps4_none">Not assigned</string>
     <string name="st_ps4_set">%1$s · shown as PlayStation on Home</string>
     <string name="st_ps4_question">Which input is the PS4 connected to?</string>
     <string name="st_ps4_item">PlayStation</string>
     <string name="st_classic">Classic view</string>
-    <string name="st_classic_desc">Horizon Home\'s category rows in the Japanese style</string>
+    <string name="st_classic_desc">Juke TV\'s category rows in the Japanese style</string>
     <string name="st_clock">Clock</string>
     <string name="st_clock_system">System</string>
     <string name="st_clock_24">24 hours</string>
@@ -295,6 +295,11 @@
     <string name="st_folder_empty">Folder is empty</string>
     <string name="st_folder_full">A folder holds up to 8 apps</string>
     <string name="st_folders_full">At most 6 folders</string>
+    <string name="st_icons_glass">See-through icons</string>
+    <string name="st_photos_pick">Choose own photos…</string>
+    <string name="st_photos_title">Choose photos (OK ticks)</string>
+    <string name="st_picked_n">%1$d photos chosen</string>
+    <string name="st_view_new">Switch to the new view</string>
     <plurals name="st_apps_count">
         <item quantity="one">%d app</item>
         <item quantity="other">%d apps</item>

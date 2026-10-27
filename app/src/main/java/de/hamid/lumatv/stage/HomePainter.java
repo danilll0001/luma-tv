@@ -385,7 +385,8 @@ final class HomePainter {
             int ms = c.save();
             if (glass && focus) c.scale(1.04f, 1.04f, left + bx + bw / 2, top + by + bh / 2 - 3);
             if (glass && focus) c.translate(0, -3);
-            marks.item(c, item, left + bx, top + by, bw, bh, size, color, false, mono);
+            int iconColor = f.look.iconGlass ? Color2.fade(ink, opacity * .6f) : color;
+            marks.item(c, item, left + bx, top + by, bw, bh, size, iconColor, false, mono);
             c.restoreToCount(ms);
         }
         if (!Look.SHOW_ICONS.equals(apps)) {

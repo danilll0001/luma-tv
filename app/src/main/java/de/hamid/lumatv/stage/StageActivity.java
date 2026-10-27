@@ -90,6 +90,7 @@ public final class StageActivity extends Activity implements StageView.Host {
     /** Applies the app language chosen in the settings (Deutsch, English, Russian) before anything is drawn. */
     @Override protected void attachBaseContext(Context base) {
         String code = base.getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_look_language", "system");
+        appliedLanguage = code == null ? "system" : code;
         if (code != null && !"system".equals(code)) {
             Configuration config = new Configuration(base.getResources().getConfiguration());
             config.setLocale(new Locale(code));
@@ -99,6 +100,8 @@ public final class StageActivity extends Activity implements StageView.Host {
     }
 
     private int greetVariant;
+    private String appliedLanguage = "system";
+    private String pendingWallpaper;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -128,6 +131,12 @@ public final class StageActivity extends Activity implements StageView.Host {
 
     @Override protected void onResume() {
         super.onResume();
+        // The language may have been changed in the classic view meanwhile.
+        String savedLanguage = getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_look_language", "system");
+        if (savedLanguage != null && !savedLanguage.equals(appliedLanguage)) {
+            recreate();
+            return;
+        }
         resumed = true;
         greetVariant = new java.util.Random().nextInt(100);
         main.removeCallbacks(clockTick);
@@ -150,6 +159,10 @@ public final class StageActivity extends Activity implements StageView.Host {
         if (catalogDirty) loadCatalog();
         stage.setHomeVisible(true);
         stage.requestFocus();
+        if ("classic".equals(getSharedPreferences("luma_home", MODE_PRIVATE).getString("stage_look_ui_mode", "new"))) {
+            startActivity(new Intent(this, DashboardActivity.class));
+            overridePendingTransition(0, 0);
+        }
     }
 
     @Override protected void onPause() {
@@ -323,7 +336,9 @@ public final class StageActivity extends Activity implements StageView.Host {
         }
     }
 
+    /** Switches to the classic view and keeps it as the Home view until the person switches back. */
     @Override public void openClassic() {
+        getSharedPreferences("luma_home", MODE_PRIVATE).edit().putString("stage_look_ui_mode", "classic").commit();
         startActivity(new Intent(this, DashboardActivity.class));
     }
 
@@ -443,6 +458,7 @@ public final class StageActivity extends Activity implements StageView.Host {
             return;
         }
         final List<String> folders = look.photoFolders();
+        final List<String> picked = look.pickedPhotos();
         worker.execute(() -> {
             List<String> found = new ArrayList<>();
             StringBuilder where = new StringBuilder(MediaStore.Images.Media.WIDTH + ">=1000 AND "
@@ -465,10 +481,177 @@ public final class StageActivity extends Activity implements StageView.Host {
             }
             main.post(() -> {
                 if (isDestroyed()) return;
-                Walls.setOwn(found);
+                Walls.setOwn(picked.isEmpty() ? found : picked);
+                if (pendingWallpaper != null) {
+                    stage.showWallpaper(pendingWallpaper);
+                    pendingWallpaper = null;
+                }
                 stage.photosChanged();
             });
         });
+    }
+
+    private List<String> queryPhotos(List<String> folders, int limit) {
+        List<String> found = new ArrayList<>();
+        StringBuilder where = new StringBuilder(MediaStore.Images.Media.WIDTH + ">=1000 AND "
+                + MediaStore.Images.Media.HEIGHT + ">=600");
+        String[] args = null;
+        if (!folders.isEmpty()) {
+            where.append(" AND ").append(MediaStore.Images.Media.BUCKET_DISPLAY_NAME).append(" IN (");
+            for (int i = 0; i < folders.size(); i++) where.append(i == 0 ? "?" : ",?");
+            where.append(")");
+            args = folders.toArray(new String[0]);
+        }
+        try (Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                new String[]{MediaStore.Images.Media._ID}, where.toString(), args,
+                MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+            while (cursor != null && cursor.moveToNext() && found.size() < limit) {
+                found.add(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(0)).toString());
+            }
+        } catch (RuntimeException unavailable) {
+            // Return what we have.
+        }
+        return found;
+    }
+
+    @Override public void pickPhotos() {
+        final String permission = photoPermission();
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{permission}, REQ_PHOTOS);
+            return;
+        }
+        final List<String> folders = look.photoFolders();
+        worker.execute(() -> {
+            final List<String> uris = queryPhotos(folders, 160);
+            main.post(() -> showPhotoDialog(uris));
+        });
+    }
+
+    private android.graphics.Bitmap thumb(String uri, int targetWidth) {
+        try {
+            android.content.ContentResolver resolver = getContentResolver();
+            android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (java.io.InputStream in = resolver.openInputStream(android.net.Uri.parse(uri))) {
+                android.graphics.BitmapFactory.decodeStream(in, null, bounds);
+            }
+            int sample = 1;
+            while (bounds.outWidth / (sample * 2) >= targetWidth) sample *= 2;
+            android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+            options.inSampleSize = sample;
+            options.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
+            try (java.io.InputStream in = resolver.openInputStream(android.net.Uri.parse(uri))) {
+                return android.graphics.BitmapFactory.decodeStream(in, null, options);
+            }
+        } catch (java.io.IOException | RuntimeException | OutOfMemoryError failed) {
+            return null;
+        }
+    }
+
+    /** A grid of photos; OK ticks or unticks one. Several can be chosen. */
+    private void showPhotoDialog(final List<String> candidates) {
+        if (isDestroyed()) return;
+        final java.util.Set<String> chosen = new java.util.LinkedHashSet<>(look.pickedPhotos());
+        for (String uri : chosen) if (!candidates.contains(uri)) candidates.add(0, uri);
+        if (candidates.isEmpty()) {
+            toast(getString(R.string.st_own_none));
+            return;
+        }
+        final android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+        final int cellHeight = Math.round(metrics.widthPixels * .115f);
+        final int badge = Math.round(34 * metrics.density), gap = Math.round(8 * metrics.density);
+        final android.util.LruCache<String, android.graphics.Bitmap> cache = new android.util.LruCache<>(80);
+        final java.util.concurrent.ExecutorService loader = java.util.concurrent.Executors.newFixedThreadPool(3);
+        final android.widget.GridView grid = new android.widget.GridView(this);
+        grid.setNumColumns(4);
+        grid.setHorizontalSpacing(gap);
+        grid.setVerticalSpacing(gap);
+        grid.setSelector(new android.graphics.drawable.ColorDrawable(0x66FFFFFF));
+        grid.setDrawSelectorOnTop(true);
+        final android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+            @Override public int getCount() { return candidates.size(); }
+            @Override public Object getItem(int position) { return candidates.get(position); }
+            @Override public long getItemId(int position) { return position; }
+
+            @Override public android.view.View getView(int position, android.view.View convert, android.view.ViewGroup parent) {
+                android.widget.FrameLayout cell;
+                final android.widget.ImageView image;
+                android.widget.TextView mark;
+                if (convert instanceof android.widget.FrameLayout) {
+                    cell = (android.widget.FrameLayout) convert;
+                    image = (android.widget.ImageView) cell.getChildAt(0);
+                    mark = (android.widget.TextView) cell.getChildAt(1);
+                } else {
+                    cell = new android.widget.FrameLayout(StageActivity.this);
+                    cell.setLayoutParams(new android.widget.AbsListView.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT, cellHeight));
+                    image = new android.widget.ImageView(StageActivity.this);
+                    image.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                    image.setBackgroundColor(0xFF2A2C31);
+                    cell.addView(image, new android.widget.FrameLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                    mark = new android.widget.TextView(StageActivity.this);
+                    mark.setText("\u2713");
+                    mark.setTextColor(0xFFFFFFFF);
+                    mark.setTextSize(18);
+                    mark.setGravity(android.view.Gravity.CENTER);
+                    mark.setBackgroundColor(0xE6208A4A);
+                    android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+                            badge, badge, android.view.Gravity.TOP | android.view.Gravity.END);
+                    lp.setMargins(0, gap / 2, gap / 2, 0);
+                    cell.addView(mark, lp);
+                }
+                final String uri = candidates.get(position);
+                mark.setVisibility(chosen.contains(uri) ? android.view.View.VISIBLE : android.view.View.GONE);
+                image.setTag(uri);
+                android.graphics.Bitmap cached = cache.get(uri);
+                if (cached != null) {
+                    image.setImageBitmap(cached);
+                } else {
+                    image.setImageDrawable(null);
+                    loader.execute(() -> {
+                        final android.graphics.Bitmap bitmap = thumb(uri, 360);
+                        if (bitmap == null) return;
+                        cache.put(uri, bitmap);
+                        runOnUiThread(() -> {
+                            if (uri.equals(image.getTag())) image.setImageBitmap(bitmap);
+                        });
+                    });
+                }
+                return cell;
+            }
+        };
+        grid.setAdapter(adapter);
+        grid.setOnItemClickListener((parent, view, position, id) -> {
+            String uri = candidates.get(position);
+            if (!chosen.remove(uri)) chosen.add(uri);
+            adapter.notifyDataSetChanged();
+        });
+        final AlertDialog dialog = new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(R.string.st_photos_title)
+                .setView(grid)
+                .setPositiveButton(android.R.string.ok, (d, which) -> {
+                    List<String> picked = new ArrayList<>(chosen);
+                    if (picked.size() > 100) picked = new ArrayList<>(picked.subList(0, 100));
+                    if (!look.setPickedPhotos(picked)) {
+                        toast(getString(R.string.st_save_failed));
+                        return;
+                    }
+                    if (!picked.isEmpty() && Look.SRC_BUILTIN.equals(look.photoSource)) look.setPhotoSource(Look.SRC_OWN);
+                    pendingWallpaper = picked.size() == 1 ? "usr:" + picked.get(0) : null;
+                    scanPhotos(false);
+                })
+                .setNeutralButton(R.string.st_folders, (d, which) -> pickFolders())
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        dialog.setOnDismissListener(d -> {
+            loader.shutdownNow();
+            stage.requestFocus();
+        });
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(Math.round(metrics.widthPixels * .82f), Math.round(metrics.heightPixels * .84f));
+        }
     }
 
     private String photoPermission() {

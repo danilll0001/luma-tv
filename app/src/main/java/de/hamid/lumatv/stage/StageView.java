@@ -58,6 +58,8 @@ public final class StageView extends View {
         void languageChanged();
         /** Dialog to choose the photo folders used for own photos. */
         void pickFolders();
+        /** Grid of photos to tick one by one. */
+        void pickPhotos();
         /** Text box with a title; calls back with the entered text. */
         void promptText(String title, String initial, java.util.function.Consumer<String> result);
         /** Multi-choice list of apps; calls back with the keys of the ticked ones. */
@@ -489,7 +491,12 @@ public final class StageView extends View {
         return pool.get((i + 1) % pool.size());
     }
 
-    /** Called after the HorizonHome folder was read. */
+    /** Shows one of the own photos as the Home background right away. */
+    public void showWallpaper(String id) {
+        if (look.set("wallpaper", id)) loadScene(id, null);
+    }
+
+    /** Called after the photo list was read. */
     public void photosChanged() {
         if (isPage(top())) refreshPage();
         invalidate();
@@ -1095,9 +1102,10 @@ public final class StageView extends View {
                 p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_style), false);
                 p.width = 1056;
                 p.top = 212;
-                p.rowHeight = 76;
-                p.sectionGap = 24;
+                p.rowHeight = 68;
+                p.sectionGap = 16;
                 toggleSection(p, s(R.string.st_glass), look.glassUi, v -> look.setGlassUi(v));
+                toggleSection(p, s(R.string.st_icons_glass), look.iconGlass, v -> look.setIconGlass(v));
                 toggleSection(p, s(R.string.st_sound), look.sound, v -> look.setSound(v));
                 toggleSection(p, s(R.string.st_night), look.night, v -> {
                     boolean saved = look.setNight(v);
@@ -1286,11 +1294,13 @@ public final class StageView extends View {
                     o.checked = look.saverMinutes == m;
                 }
                 Page.Section own = p.section(null, false);
-                Page.Opt folderOpt = own.add(new Page.Opt(s(R.string.st_folders), host::pickFolders));
+                Page.Opt folderOpt = own.add(new Page.Opt(s(R.string.st_photos_pick), host::pickPhotos));
                 int count = Walls.ownIds().size();
+                int pickedCount = look.pickedPhotos().size();
                 List<String> chosenFolders = look.photoFolders();
                 String folderText = chosenFolders.isEmpty() ? s(R.string.st_folders_all) : s(R.string.st_folders_n, chosenFolders.size());
-                folderOpt.description = (count > 0 ? s(R.string.st_own_found, count) : s(R.string.st_own_none)) + " \u00b7 " + folderText;
+                folderOpt.description = pickedCount > 0 ? s(R.string.st_picked_n, pickedCount)
+                        : (count > 0 ? s(R.string.st_own_found, count) : s(R.string.st_own_none)) + " \u00b7 " + folderText;
                 folderOpt.forward = true;
                 p.hint = s(R.string.st_hint_apply);
                 break;

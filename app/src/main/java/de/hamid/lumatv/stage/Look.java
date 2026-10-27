@@ -57,6 +57,7 @@ final class Look {
     private static final String KEY_MARKS = "stage_marks_v1";
     private static final String KEY_MEDIA = "stage_media_pkg_v1";
     private static final String KEY_FOLDERS = "stage_photo_folders_v1";
+    private static final String KEY_PICKED = "stage_picked_photos_v1";
     private static final String KEY_FOLDER_DATA = "stage_app_folders_v1";
     private static final String P = "stage_look_";
 
@@ -69,7 +70,7 @@ final class Look {
     /** 0 normal, 1 large, 2 extra large. */
     int clockSize;
     String accent, photoSource, inputsMode, language;
-    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate;
+    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate, iconGlass;
     /** Birthday for the greeting; month 0 = not set. */
     int birthMonth, birthDay;
     /** Minutes of inactivity before the photo screensaver starts; 0 = off. */
@@ -103,6 +104,7 @@ final class Look {
         night = prefs.getBoolean(P + "night", true);
         foldersOn = prefs.getBoolean(P + "folders_on", true);
         autoUpdate = prefs.getBoolean(P + "auto_update", true);
+        iconGlass = prefs.getBoolean(P + "icon_glass", true);
         birthMonth = prefs.getInt(P + "birth_month", 0);
         birthDay = prefs.getInt(P + "birth_day", 0);
     }
@@ -185,6 +187,30 @@ final class Look {
         if (!prefs.edit().putBoolean(P + "date", on).commit()) return false;
         dateOn = on;
         return true;
+    }
+
+    boolean setIconGlass(boolean on) {
+        if (!prefs.edit().putBoolean(P + "icon_glass", on).commit()) return false;
+        iconGlass = on;
+        return true;
+    }
+
+    /** Single photos the person ticked (media store content URIs); empty = use the folders. */
+    java.util.List<String> pickedPhotos() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(prefs.getString(KEY_PICKED, "[]"));
+            for (int i = 0; i < array.length(); i++) out.add(array.getString(i));
+        } catch (JSONException broken) {
+            out.clear();
+        }
+        return out;
+    }
+
+    boolean setPickedPhotos(java.util.List<String> uris) {
+        JSONArray array = new JSONArray();
+        for (String uri : uris) array.put(uri);
+        return prefs.edit().putString(KEY_PICKED, array.toString()).commit();
     }
 
     boolean setFoldersOn(boolean on) {

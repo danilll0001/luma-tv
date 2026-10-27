@@ -1,6 +1,6 @@
-# Horizon Home
+# Juke TV
 
-> Horizon Home ist ein Fork von [Luma TV](https://github.com/Hamido212/luma-tv) (MIT, Hamid). Neu in 0.4: Begrüßung mit einstellbarem Namen, russische Oberfläche, neuer Name und neues Logo. Alle Urheberhinweise der Originale bleiben erhalten (siehe LICENSE und NOTICE.md).
+> Juke TV ist ein Fork von [Luma TV](https://github.com/Hamido212/luma-tv) (MIT, Hamid). Neu in 0.4: Begrüßung mit einstellbarem Namen, russische Oberfläche, neuer Name und neues Logo. Alle Urheberhinweise der Originale bleiben erhalten (siehe LICENSE und NOTICE.md).
 
 # Luma TV (Original-Beschreibung)
 
