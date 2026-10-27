@@ -45,6 +45,7 @@ final class Look {
     /** Home holds one to nine apps, like CleanFrame. */
     static final int HOME_MAX = 9;
     static final String INPUT_PREFIX = "input:";
+    static final String FOLDER_PREFIX = "folder:";
 
     /** Old dashboard key for the PS4 HDMI input; read here so the assignment carries over. */
     private static final String KEY_PS4 = "ps4_input_id_v1";
@@ -56,6 +57,7 @@ final class Look {
     private static final String KEY_MARKS = "stage_marks_v1";
     private static final String KEY_MEDIA = "stage_media_pkg_v1";
     private static final String KEY_FOLDERS = "stage_photo_folders_v1";
+    private static final String KEY_FOLDER_DATA = "stage_app_folders_v1";
     private static final String P = "stage_look_";
 
     private static final List<String> DEFAULT_HOME = Arrays.asList(
@@ -67,7 +69,7 @@ final class Look {
     /** 0 normal, 1 large, 2 extra large. */
     int clockSize;
     String accent, photoSource, inputsMode, language;
-    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night;
+    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate;
     /** Birthday for the greeting; month 0 = not set. */
     int birthMonth, birthDay;
     /** Minutes of inactivity before the photo screensaver starts; 0 = off. */
@@ -99,6 +101,8 @@ final class Look {
         glassUi = prefs.getBoolean(P + "glass_ui", true);
         sound = prefs.getBoolean(P + "sound", true);
         night = prefs.getBoolean(P + "night", true);
+        foldersOn = prefs.getBoolean(P + "folders_on", true);
+        autoUpdate = prefs.getBoolean(P + "auto_update", true);
         birthMonth = prefs.getInt(P + "birth_month", 0);
         birthDay = prefs.getInt(P + "birth_day", 0);
     }
@@ -181,6 +185,84 @@ final class Look {
         if (!prefs.edit().putBoolean(P + "date", on).commit()) return false;
         dateOn = on;
         return true;
+    }
+
+    boolean setFoldersOn(boolean on) {
+        if (!prefs.edit().putBoolean(P + "folders_on", on).commit()) return false;
+        foldersOn = on;
+        return true;
+    }
+
+    boolean setAutoUpdate(boolean on) {
+        if (!prefs.edit().putBoolean(P + "auto_update", on).commit()) return false;
+        autoUpdate = on;
+        return true;
+    }
+
+    /** Time of the last update check in milliseconds; 0 = never. */
+    long lastUpdateCheck() { return prefs.getLong(P + "update_checked", 0L); }
+
+    void setLastUpdateCheck(long millis) { prefs.edit().putLong(P + "update_checked", millis).apply(); }
+
+    // ------------------------------------------------------------------ app folders
+
+    private JSONObject folderData() {
+        try {
+            return new JSONObject(prefs.getString(KEY_FOLDER_DATA, "{}"));
+        } catch (JSONException broken) {
+            return new JSONObject();
+        }
+    }
+
+    java.util.List<String> folderNames() {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        java.util.Iterator<String> it = folderData().keys();
+        while (it.hasNext()) names.add(it.next());
+        java.util.Collections.sort(names);
+        return names;
+    }
+
+    java.util.List<String> folderMembers(String name) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        JSONArray array = folderData().optJSONArray(name);
+        if (array != null) for (int i = 0; i < array.length(); i++) out.add(array.optString(i, ""));
+        return out;
+    }
+
+    /** Creates the folder or replaces its apps. */
+    boolean saveFolder(String name, java.util.List<String> members) {
+        try {
+            JSONObject data = folderData();
+            data.put(name, new JSONArray(members));
+            return prefs.edit().putString(KEY_FOLDER_DATA, data.toString()).commit();
+        } catch (JSONException broken) {
+            return false;
+        }
+    }
+
+    /** Renames the folder and keeps its tile on Home. */
+    boolean renameFolder(String from, String to) {
+        try {
+            JSONObject data = folderData();
+            data.put(to, data.opt(from));
+            data.remove(from);
+            java.util.List<String> keys = homeKeys();
+            int at = keys.indexOf(FOLDER_PREFIX + from);
+            if (at >= 0) keys.set(at, FOLDER_PREFIX + to);
+            return prefs.edit().putString(KEY_FOLDER_DATA, data.toString())
+                    .putString(KEY_HOME, new JSONArray(keys).toString()).commit();
+        } catch (JSONException broken) {
+            return false;
+        }
+    }
+
+    boolean deleteFolder(String name) {
+        JSONObject data = folderData();
+        data.remove(name);
+        java.util.List<String> keys = homeKeys();
+        keys.remove(FOLDER_PREFIX + name);
+        return prefs.edit().putString(KEY_FOLDER_DATA, data.toString())
+                .putString(KEY_HOME, new JSONArray(keys).toString()).commit();
     }
 
     boolean setGlassUi(boolean on) {

@@ -134,6 +134,13 @@ public final class StageActivity extends Activity implements StageView.Host {
         clockTick.run();
         refreshInputs();
         scanPhotos(false);
+        if (!installRegistered) {
+            android.content.IntentFilter filter = new android.content.IntentFilter(ACTION_INSTALL);
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(installResult, filter, Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(installResult, filter);
+            installRegistered = true;
+        }
+        if (look.autoUpdate && System.currentTimeMillis() - look.lastUpdateCheck() > 24L * 60 * 60 * 1000) checkUpdate(false);
         try {
             tvManager = (TvInputManager) getSystemService(Context.TV_INPUT_SERVICE);
             if (tvManager != null) tvManager.registerCallback(inputCallback, main);
@@ -162,6 +169,10 @@ public final class StageActivity extends Activity implements StageView.Host {
 
     @Override protected void onDestroy() {
         unregisterReceiver(packages);
+        if (installRegistered) {
+            try { unregisterReceiver(installResult); } catch (RuntimeException ignored) { }
+            installRegistered = false;
+        }
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -260,6 +271,13 @@ public final class StageActivity extends Activity implements StageView.Host {
                 String customLabel = look.customLabel(key);
                 String label = customLabel != null ? customLabel : isPs4 ? ps4Label : input.getValue();
                 items.add(new HomeItem(key, label, null, id, mark, null));
+            }
+            if (look.foldersOn) {
+                for (String folder : look.folderNames()) {
+                    String key = Look.FOLDER_PREFIX + folder;
+                    String pickedMark = look.customMark(key);
+                    items.add(new HomeItem(key, folder, null, null, Marks.has(pickedMark) ? pickedMark : "folder", null));
+                }
             }
             if (ps4 != null && !ps4Listed) {
                 String key = Look.INPUT_PREFIX + ps4;
@@ -567,6 +585,274 @@ public final class StageActivity extends Activity implements StageView.Host {
 
     @Override public void languageChanged() {
         recreate();
+    }
+
+    // ------------------------------------------------------------------ dialogs, updates, backup
+
+    private static final String REPO = "danilll0001/luma-tv";
+    private static final String ACTION_INSTALL = "de.horizonhome.tv.INSTALL_RESULT";
+    private static final int REQ_IMPORT = 42;
+    private String updateUrl, updateText = "";
+    private boolean installRegistered;
+
+    private final android.content.BroadcastReceiver installResult = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            int status = intent.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS,
+                    android.content.pm.PackageInstaller.STATUS_FAILURE);
+            if (status == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+                if (confirm != null) {
+                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(confirm);
+                }
+            } else if (status != android.content.pm.PackageInstaller.STATUS_SUCCESS) {
+                toast(getString(R.string.st_update_failed));
+            }
+        }
+    };
+
+    @Override public void promptText(String title, String initial, java.util.function.Consumer<String> result) {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
+        input.setText(initial);
+        input.setSelection(input.getText().length());
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(title)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> result.accept(input.getText().toString().trim()))
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    @Override public void chooseApps(String title, List<HomeItem> apps, List<String> checkedKeys,
+                                     java.util.function.Consumer<List<String>> result) {
+        final List<HomeItem> sorted = new ArrayList<>(apps);
+        java.util.Collections.sort(sorted, (a, b) -> a.label.compareToIgnoreCase(b.label));
+        final String[] names = new String[sorted.size()];
+        final boolean[] checked = new boolean[sorted.size()];
+        for (int i = 0; i < sorted.size(); i++) {
+            names[i] = sorted.get(i).label;
+            checked[i] = checkedKeys.contains(sorted.get(i).key);
+        }
+        new AlertDialog.Builder(this, R.style.LumaDialog)
+                .setTitle(title)
+                .setMultiChoiceItems(names, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    List<String> keys = new ArrayList<>();
+                    for (int i = 0; i < sorted.size(); i++) if (checked[i]) keys.add(sorted.get(i).key);
+                    result.accept(keys);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(dialog -> stage.requestFocus())
+                .show();
+    }
+
+    private static int[] versionParts(String version) {
+        int[] out = new int[3];
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?")
+                .matcher(version == null ? "" : version);
+        if (m.find()) {
+            out[0] = Integer.parseInt(m.group(1));
+            out[1] = Integer.parseInt(m.group(2));
+            out[2] = m.group(3) == null ? 0 : Integer.parseInt(m.group(3));
+        }
+        return out;
+    }
+
+    private static boolean isNewer(String tag, String current) {
+        int[] a = versionParts(tag), b = versionParts(current);
+        for (int i = 0; i < 3; i++) if (a[i] != b[i]) return a[i] > b[i];
+        return false;
+    }
+
+    private static String readAll(java.io.InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int n;
+        while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+        return out.toString("UTF-8");
+    }
+
+    @Override public String updateStatus() {
+        return updateText.isEmpty() ? getString(R.string.st_update_idle) : updateText;
+    }
+
+    @Override public boolean updateReady() { return updateUrl != null; }
+
+    @Override public void checkUpdate(final boolean manual) {
+        updateText = getString(R.string.st_update_checking);
+        stage.nameChanged();
+        worker.execute(() -> {
+            String tag = null, url = null;
+            int problem = 0; // 0 fine, 1 no release, 2 offline
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                        new java.net.URL("https://api.github.com/repos/" + REPO + "/releases/latest").openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                c.setRequestProperty("Accept", "application/vnd.github+json");
+                c.setRequestProperty("User-Agent", "HorizonHome");
+                int code = c.getResponseCode();
+                if (code == 404) {
+                    problem = 1;
+                } else if (code != 200) {
+                    problem = 2;
+                } else {
+                    org.json.JSONObject json = new org.json.JSONObject(readAll(c.getInputStream()));
+                    tag = json.optString("tag_name");
+                    boolean preview = getPackageName().endsWith(".preview");
+                    org.json.JSONArray assets = json.optJSONArray("assets");
+                    for (int i = 0; assets != null && i < assets.length(); i++) {
+                        org.json.JSONObject asset = assets.getJSONObject(i);
+                        String name = asset.optString("name");
+                        if (name.endsWith(".apk") && name.contains(preview ? "preview" : "home")) {
+                            url = asset.optString("browser_download_url");
+                            break;
+                        }
+                    }
+                }
+            } catch (java.io.IOException | org.json.JSONException | RuntimeException offline) {
+                problem = 2;
+            }
+            final String foundTag = tag, foundUrl = url;
+            final int failed = problem;
+            main.post(() -> {
+                if (isDestroyed()) return;
+                String current = "";
+                try {
+                    current = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+                } catch (Exception unknown) {
+                    // Keep an empty version: every release counts as newer.
+                }
+                look.setLastUpdateCheck(System.currentTimeMillis());
+                if (failed == 1) {
+                    updateText = getString(R.string.st_update_none);
+                    updateUrl = null;
+                } else if (failed == 2) {
+                    updateText = getString(R.string.st_update_offline);
+                    updateUrl = null;
+                } else if (foundUrl != null && !foundUrl.isEmpty() && isNewer(foundTag, current)) {
+                    updateText = getString(R.string.st_update_available, foundTag);
+                    updateUrl = foundUrl;
+                    if (!manual) toast(updateText);
+                } else {
+                    updateText = getString(R.string.st_update_current, current);
+                    updateUrl = null;
+                }
+                stage.nameChanged();
+            });
+        });
+    }
+
+    @Override public void installUpdate() {
+        final String url = updateUrl;
+        if (url == null) return;
+        toast(getString(R.string.st_update_downloading));
+        worker.execute(() -> {
+            try {
+                android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+                int id = installer.createSession(new android.content.pm.PackageInstaller.SessionParams(
+                        android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL));
+                try (android.content.pm.PackageInstaller.Session session = installer.openSession(id)) {
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setConnectTimeout(15000);
+                    c.setReadTimeout(30000);
+                    try (java.io.InputStream in = c.getInputStream();
+                         java.io.OutputStream out = session.openWrite("update", 0, -1)) {
+                        byte[] buffer = new byte[65536];
+                        int n;
+                        while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+                        session.fsync(out);
+                    }
+                    Intent result = new Intent(ACTION_INSTALL).setPackage(getPackageName());
+                    android.app.PendingIntent pending = android.app.PendingIntent.getBroadcast(this, id, result,
+                            android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_MUTABLE);
+                    session.commit(pending.getIntentSender());
+                }
+            } catch (java.io.IOException | RuntimeException failed) {
+                main.post(() -> toast(getString(R.string.st_update_failed)));
+            }
+        });
+    }
+
+    @Override public void exportSettings() {
+        try {
+            org.json.JSONObject json = new org.json.JSONObject();
+            for (Map.Entry<String, ?> entry : getSharedPreferences("luma_home", MODE_PRIVATE).getAll().entrySet()) {
+                Object value = entry.getValue();
+                if (entry.getKey().startsWith("stage_")
+                        && (value instanceof String || value instanceof Boolean || value instanceof Integer)) {
+                    json.put(entry.getKey(), value);
+                }
+            }
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, "horizon-home-settings.json");
+            values.put(MediaStore.Downloads.MIME_TYPE, "application/json");
+            values.put(MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+            android.net.Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) throw new java.io.IOException("no uri");
+            try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+                out.write(json.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            toast(getString(R.string.st_backup_saved));
+        } catch (java.io.IOException | org.json.JSONException | RuntimeException failed) {
+            toast(getString(R.string.st_backup_failed));
+        }
+    }
+
+    @Override public void importSettings() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        try {
+            startActivityForResult(pick, REQ_IMPORT);
+        } catch (RuntimeException noPicker) {
+            importLatestExport();
+        }
+    }
+
+    /** Fallback for TVs without a file picker: the newest file this app saved in Downloads. */
+    private void importLatestExport() {
+        try (Cursor cursor = getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                new String[]{MediaStore.Downloads._ID}, MediaStore.Downloads.DISPLAY_NAME + " LIKE ?",
+                new String[]{"horizon-home-settings%"}, MediaStore.Downloads.DATE_ADDED + " DESC")) {
+            if (cursor != null && cursor.moveToFirst()) {
+                applyImport(ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cursor.getLong(0)));
+                return;
+            }
+        } catch (RuntimeException unavailable) {
+            // Fall through to the message.
+        }
+        toast(getString(R.string.st_backup_nofile));
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_IMPORT && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            applyImport(data.getData());
+        }
+    }
+
+    private void applyImport(android.net.Uri uri) {
+        try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+            org.json.JSONObject json = new org.json.JSONObject(readAll(in));
+            android.content.SharedPreferences.Editor edit = getSharedPreferences("luma_home", MODE_PRIVATE).edit();
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                Object value = json.get(key);
+                if (!key.startsWith("stage_")) continue;
+                if (value instanceof Boolean) edit.putBoolean(key, (Boolean) value);
+                else if (value instanceof Integer) edit.putInt(key, (Integer) value);
+                else if (value instanceof String) edit.putString(key, (String) value);
+            }
+            edit.commit();
+            toast(getString(R.string.st_backup_loaded));
+            recreate();
+        } catch (java.io.IOException | org.json.JSONException | RuntimeException failed) {
+            toast(getString(R.string.st_backup_nofile));
+        }
     }
 
     @Override public void toast(String text) {

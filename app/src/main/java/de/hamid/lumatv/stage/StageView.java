@@ -58,11 +58,25 @@ public final class StageView extends View {
         void languageChanged();
         /** Dialog to choose the photo folders used for own photos. */
         void pickFolders();
+        /** Text box with a title; calls back with the entered text. */
+        void promptText(String title, String initial, java.util.function.Consumer<String> result);
+        /** Multi-choice list of apps; calls back with the keys of the ticked ones. */
+        void chooseApps(String title, List<HomeItem> apps, List<String> checkedKeys, java.util.function.Consumer<List<String>> result);
+        /** Looks for a newer release on GitHub. */
+        void checkUpdate(boolean manual);
+        /** Downloads the newer release and starts the system installer. */
+        void installUpdate();
+        String updateStatus();
+        boolean updateReady();
+        /** Writes the settings to a file in Downloads. */
+        void exportSettings();
+        /** Loads settings from a file. */
+        void importSettings();
     }
 
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
-            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21;
+            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21, S_FOLDER = 22, S_FOLDERS = 23, S_FOLDEDIT = 24, S_UPDATE = 25;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -91,6 +105,7 @@ public final class StageView extends View {
     /** HDMI inputs with a device plugged in; the Inputs control shows only when this is not empty. */
     private Map<String, String> connected = new LinkedHashMap<>();
     private String editKey;
+    private String folderKey;
     private String searchQuery = "";
     private boolean homeVisible;
     private String date = "";
@@ -223,6 +238,26 @@ public final class StageView extends View {
         return !connected.isEmpty() || look.mediaPackage() != null;
     }
 
+    /** Folders open their own list; everything else starts. */
+    private void openItem(HomeItem item) {
+        if (item.key.startsWith(Look.FOLDER_PREFIX)) {
+            folderKey = item.key.substring(Look.FOLDER_PREFIX.length());
+            push(S_FOLDER);
+        } else {
+            host.launch(item);
+        }
+    }
+
+    private void chooseFolderApps(final String name) {
+        host.chooseApps(s(R.string.st_folder_apps), apps(), look.folderMembers(name), chosen -> {
+            List<String> kept = new ArrayList<String>();
+            for (int i = 0; i < chosen.size() && i < 8; i++) kept.add(chosen.get(i));
+            if (chosen.size() > 8) host.toast(s(R.string.st_folder_full));
+            if (look.saveFolder(name, kept)) { host.catalogChanged(); refreshPage(); }
+            else host.toast(s(R.string.st_save_failed));
+        });
+    }
+
     private void openUtil() {
         int[] kinds = utilKinds();
         int kind = kinds[Math.min(util, kinds.length - 1)];
@@ -248,7 +283,7 @@ public final class StageView extends View {
         byKey.clear();
         for (HomeItem item : items) byKey.put(item.key, item);
         rebuildHome();
-        if (top() == S_APPS || top() == S_APPEDIT) refreshPage();
+        if (top() == S_APPS || top() == S_APPEDIT || top() == S_FOLDERS || top() == S_FOLDEDIT || top() == S_FOLDER) refreshPage();
         if (top() == S_ALL) allFocus = Math.min(allFocus, Math.max(0, catalog.size() - 1));
         invalidate();
     }
@@ -326,7 +361,8 @@ public final class StageView extends View {
     private static boolean isPage(int screen) {
         return screen == S_BACKGROUND || screen == S_ROTATION || screen == S_LAYOUT || screen == S_TYPE
                 || screen == S_FOCUS || screen == S_TV || screen == S_INPUTS || screen == S_PS4 || screen == S_CLOCK || screen == S_GREETING || screen == S_CONNECTED
-                || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG || screen == S_STYLE;
+                || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG || screen == S_STYLE
+                || screen == S_FOLDER || screen == S_FOLDERS || screen == S_FOLDEDIT || screen == S_UPDATE;
     }
 
     private long dur(long ms) { return look.motion ? ms : 0; }
@@ -950,8 +986,109 @@ public final class StageView extends View {
                 customize.forward = true;
                 Page.Opt style = luma.add(new Page.Opt(s(R.string.st_style), () -> push(S_STYLE)));
                 style.forward = true;
+                Page.Opt upd = luma.add(new Page.Opt(s(R.string.st_update_title), () -> push(S_UPDATE)));
+                upd.forward = true;
                 p.footnote = s(R.string.st_credits);
                 p.hint = s(R.string.st_hint_select);
+                break;
+            }
+            case S_FOLDER: {
+                p = new Page(screen, s(R.string.menu_title), folderKey == null ? "" : folderKey, false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                Page.Section sec = p.section(null, false);
+                int shown = 0;
+                if (folderKey != null) {
+                    for (String member : look.folderMembers(folderKey)) {
+                        final HomeItem target = byKey.get(member);
+                        if (target == null) continue;
+                        sec.add(new Page.Opt(target.label, () -> host.launch(target)));
+                        shown++;
+                    }
+                }
+                if (shown == 0) {
+                    Page.Opt none = sec.add(new Page.Opt(s(R.string.st_folder_empty), null));
+                    none.enabled = false;
+                }
+                Page.Opt edit = sec.add(new Page.Opt(s(R.string.st_folder_edit), () -> push(S_FOLDEDIT)));
+                edit.forward = true;
+                p.hint = s(R.string.st_hint_select);
+                break;
+            }
+            case S_FOLDERS: {
+                p = new Page(screen, s(R.string.st_customize), s(R.string.st_folders_title), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_folders_show), look.foldersOn, v -> {
+                    boolean saved = look.setFoldersOn(v);
+                    if (saved) host.catalogChanged();
+                    return saved;
+                });
+                Page.Section sec = p.section(null, false);
+                for (String name : look.folderNames()) {
+                    final String n = name;
+                    Page.Opt o = sec.add(new Page.Opt(name, () -> { folderKey = n; push(S_FOLDEDIT); }));
+                    o.forward = true;
+                }
+                sec.add(new Page.Opt(s(R.string.st_folder_new), () -> {
+                    if (look.folderNames().size() >= 6) { host.toast(s(R.string.st_folders_full)); return; }
+                    host.promptText(s(R.string.st_folder_new_title), "", text -> {
+                        if (text.isEmpty() || look.folderNames().contains(text)) return;
+                        if (look.saveFolder(text, new ArrayList<String>())) { host.catalogChanged(); refreshPage(); }
+                        else host.toast(s(R.string.st_save_failed));
+                    });
+                }));
+                p.hint = s(R.string.st_hint_select);
+                break;
+            }
+            case S_FOLDEDIT: {
+                p = new Page(screen, s(R.string.st_folders_title), folderKey == null ? "" : folderKey, false);
+                p.width = 1056;
+                p.top = 260;
+                p.rowHeight = 88;
+                Page.Section sec = p.section(null, false);
+                final String name = folderKey;
+                if (name != null) {
+                    Page.Opt rn = sec.add(new Page.Opt(s(R.string.st_folder_rename), () ->
+                            host.promptText(s(R.string.st_folder_rename), name, text -> {
+                                if (text.isEmpty() || text.equals(name) || look.folderNames().contains(text)) return;
+                                if (look.renameFolder(name, text)) { folderKey = text; host.catalogChanged(); refreshPage(); }
+                                else host.toast(s(R.string.st_save_failed));
+                            })));
+                    rn.description = name;
+                    Page.Opt choose = sec.add(new Page.Opt(s(R.string.st_folder_apps), () -> chooseFolderApps(name)));
+                    choose.description = s(R.string.st_folder_count, look.folderMembers(name).size());
+                    sec.add(new Page.Opt(s(R.string.st_folder_delete), () ->
+                            host.confirm(s(R.string.st_folder_delete_q, name), () -> {
+                                if (!look.deleteFolder(name)) { host.toast(s(R.string.st_save_failed)); return; }
+                                folderKey = null;
+                                host.catalogChanged();
+                                pop();
+                                if (top() == S_FOLDER) pop();
+                            })));
+                }
+                p.hint = s(R.string.st_hint_apply);
+                break;
+            }
+            case S_UPDATE: {
+                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_update_title), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.descHeight = 100;
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_update_auto), look.autoUpdate, v -> look.setAutoUpdate(v));
+                Page.Section sec = p.section(null, false);
+                Page.Opt check = sec.add(new Page.Opt(s(R.string.st_update_check), () -> host.checkUpdate(true)));
+                check.description = host.updateStatus();
+                Page.Opt install = sec.add(new Page.Opt(s(R.string.st_update_install), host::installUpdate));
+                install.enabled = host.updateReady();
+                sec.add(new Page.Opt(s(R.string.st_backup_export), host::exportSettings));
+                sec.add(new Page.Opt(s(R.string.st_backup_import), host::importSettings));
+                p.hint = s(R.string.st_hint_apply);
                 break;
             }
             case S_STYLE: {
@@ -1099,7 +1236,7 @@ public final class StageView extends View {
                 String mediaPkg = look.mediaPackage();
                 final HomeItem media = mediaPkg == null ? null : byKey.get(mediaPkg);
                 if (media != null) {
-                    Page.Opt m = sec.add(new Page.Opt(media.label, () -> host.launch(media)));
+                    Page.Opt m = sec.add(new Page.Opt(media.label, () -> openItem(media)));
                     m.description = s(R.string.st_media_row_desc);
                 }
                 if (list.isEmpty() && media == null) {
@@ -1161,14 +1298,16 @@ public final class StageView extends View {
             case S_APPS: {
                 p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_customize), false);
                 p.width = 1056;
-                p.top = 212;
-                p.rowHeight = 66;
+                p.top = 204;
+                p.rowHeight = 62;
                 Page.Section sec = p.section(null, false);
                 String orderName = look.recentFirst ? s(R.string.st_order_recent) : s(R.string.st_order_custom);
                 sec.add(new Page.Opt(s(R.string.st_home_order) + ": " + orderName, () -> {
                     if (look.setRecentFirst(!look.recentFirst)) { rebuildHome(); refreshPage(); }
                     else host.toast(s(R.string.st_save_failed));
                 }));
+                Page.Opt folderRow = sec.add(new Page.Opt(s(R.string.st_folders_title), () -> push(S_FOLDERS)));
+                folderRow.forward = true;
                 for (HomeItem item : homeItems) {
                     final String key = item.key;
                     Page.Opt o = sec.add(new Page.Opt(item.label, () -> { editKey = key; push(S_APPEDIT); }));
@@ -1219,7 +1358,7 @@ public final class StageView extends View {
                     if (shown >= 7) break;
                     if (!item.label.toLowerCase().contains(q)) continue;
                     final HomeItem hit = item;
-                    sec.add(new Page.Opt(item.label, () -> host.launch(hit)));
+                    sec.add(new Page.Opt(item.label, () -> openItem(hit)));
                     shown++;
                 }
                 if (shown == 0) {
@@ -1704,7 +1843,7 @@ public final class StageView extends View {
             if (key == prev && homeIndex > 0) { homeIndex--; syncHomeScroll(true); }
             else if (key == next && homeIndex < n - 1) { homeIndex++; syncHomeScroll(true); }
             else if (key == toUtil) { homeZone = HomePainter.Z_UTIL; lens.jump(util); }
-            else if (key == KeyEvent.KEYCODE_DPAD_CENTER) host.launch(homeItems.get(homeIndex));
+            else if (key == KeyEvent.KEYCODE_DPAD_CENTER) openItem(homeItems.get(homeIndex));
         } else {
             homeZone = HomePainter.Z_UTIL;
             int prev = dock ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_UP;
@@ -1796,7 +1935,7 @@ public final class StageView extends View {
         else if (key == KeyEvent.KEYCODE_DPAD_DOWN) {
             if (allFocus + cols < n) allFocus += cols;
             else if (allFocus / cols < (n - 1) / cols) allFocus = n - 1;
-        } else if (key == KeyEvent.KEYCODE_DPAD_CENTER && n > 0) host.launch(catalog.get(allFocus));
+        } else if (key == KeyEvent.KEYCODE_DPAD_CENTER && n > 0) openItem(catalog.get(allFocus));
         scrollAll(true);
         invalidate();
     }
