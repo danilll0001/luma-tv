@@ -1149,12 +1149,6 @@ public final class DashboardActivity extends Activity {
                     : input.getValue());
             actions.add(() -> openInput(id));
         }
-        labels.add(getString(ps4 == null ? R.string.input_assign_ps4 : R.string.input_change_ps4));
-        actions.add(this::choosePs4Input);
-        if (ps4 != null) {
-            labels.add(getString(R.string.input_remove_ps4));
-            actions.add(this::removePs4);
-        }
         showList(getString(R.string.shortcut_inputs), labels, actions);
     }
 

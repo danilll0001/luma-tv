@@ -74,11 +74,18 @@ public final class StageView extends View {
         void exportSettings();
         /** Loads settings from a file. */
         void importSettings();
+        void openNetworkSettings();
+        void openBluetoothSettings();
+        /** Current weather as short text, empty when unknown. */
+        String weatherText();
+        void refreshWeather();
+        String versionText();
     }
 
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
-            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21, S_FOLDER = 22, S_FOLDERS = 23, S_FOLDEDIT = 24, S_UPDATE = 25;
+            S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21, S_FOLDER = 22, S_FOLDERS = 23, S_FOLDEDIT = 24, S_UPDATE = 25,
+            S_PANEL = 26, S_GENERAL = 27, S_FX = 28, S_NET = 29, S_ABOUT = 30, S_DISPLAY = 31;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -89,6 +96,11 @@ public final class StageView extends View {
     private final Type type;
     private final Marks marks;
     private final HomePainter homePainter;
+    private final PanelPainter panelPainter;
+    private final Sfx sfx = new Sfx();
+    private int panelFocus, popIndex = -1, netKind;
+    private boolean netOnline;
+    private long panelOpenedAt, popAt;
     private final SheetPainter sheet;
 
     private final List<Integer> stack = new ArrayList<>();
@@ -190,6 +202,7 @@ public final class StageView extends View {
         type = new Type(context.getAssets());
         marks = new Marks(context);
         homePainter = new HomePainter(gfx, type, marks);
+        panelPainter = new PanelPainter(gfx, type, marks);
         sheet = new SheetPainter(gfx, type, marks, homePainter);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -229,8 +242,15 @@ public final class StageView extends View {
 
     /** Visible home controls: All apps, Inputs (only when plugged in), Settings. */
     private int[] utilKinds() {
-        if (!showInputs()) return new int[]{HomePainter.UTIL_APPS, HomePainter.UTIL_SEARCH, HomePainter.UTIL_SETTINGS};
-        return new int[]{HomePainter.UTIL_APPS, HomePainter.UTIL_SEARCH, HomePainter.UTIL_INPUTS, HomePainter.UTIL_SETTINGS};
+        boolean inputs = showInputs(), net = look.netIcon;
+        int[] kinds = new int[3 + (inputs ? 1 : 0) + (net ? 1 : 0)];
+        int i = 0;
+        kinds[i++] = HomePainter.UTIL_APPS;
+        kinds[i++] = HomePainter.UTIL_SEARCH;
+        if (inputs) kinds[i++] = HomePainter.UTIL_INPUTS;
+        if (net) kinds[i++] = HomePainter.UTIL_NET;
+        kinds[i] = HomePainter.UTIL_SETTINGS;
+        return kinds;
     }
 
     /** Automatic: only with something plugged in (or a media app chosen). Always / never are manual. */
@@ -264,7 +284,9 @@ public final class StageView extends View {
         int[] kinds = utilKinds();
         int kind = kinds[Math.min(util, kinds.length - 1)];
         if (kind == HomePainter.UTIL_SEARCH) { host.searchApps(); return; }
-        push(kind == HomePainter.UTIL_APPS ? S_ALL : kind == HomePainter.UTIL_INPUTS ? S_CONNECTED : S_SETTINGS);
+        if (kind == HomePainter.UTIL_NET) { host.openNetworkSettings(); return; }
+        if (kind == HomePainter.UTIL_SETTINGS) { openPanel(); return; }
+        push(kind == HomePainter.UTIL_APPS ? S_ALL : S_CONNECTED);
     }
 
     /** Date under the clock; an empty text hides it. */
@@ -364,10 +386,12 @@ public final class StageView extends View {
         return screen == S_BACKGROUND || screen == S_ROTATION || screen == S_LAYOUT || screen == S_TYPE
                 || screen == S_FOCUS || screen == S_TV || screen == S_INPUTS || screen == S_PS4 || screen == S_CLOCK || screen == S_GREETING || screen == S_CONNECTED
                 || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG || screen == S_STYLE
-                || screen == S_FOLDER || screen == S_FOLDERS || screen == S_FOLDEDIT || screen == S_UPDATE;
+                || screen == S_FOLDER || screen == S_FOLDERS || screen == S_FOLDEDIT || screen == S_UPDATE
+                || screen == S_SETTINGS || screen == S_GENERAL || screen == S_FX || screen == S_NET
+                || screen == S_ABOUT || screen == S_DISPLAY;
     }
 
-    private long dur(long ms) { return look.motion ? ms : 0; }
+    private long dur(long ms) { return look.motion ? Math.round(ms * (look.animLevel == 0 ? .6 : look.animLevel == 2 ? 1.35 : 1.0)) : 0; }
 
     private String s(int id) { return getContext().getString(id); }
 
@@ -463,6 +487,147 @@ public final class StageView extends View {
                 });
             }
         });
+    }
+
+    // ------------------------------------------------------------------ quick panel and network
+
+    /** Called by the activity: kind 0 none, 1 Wi-Fi, 2 cable, 3 other; online = internet works. */
+    public void setNetwork(int kind, boolean online) {
+        if (kind == netKind && online == netOnline) return;
+        netKind = kind;
+        netOnline = online;
+        invalidate();
+    }
+
+    private String netGlyph() {
+        if (netKind == 0) return "wifi_off";
+        if (netKind == 2) return "ethernet";
+        return netOnline ? "wifi" : "wifi_off";
+    }
+
+    private String netTitle() {
+        if (netKind == 0) return s(R.string.st_net_none);
+        if (!netOnline) return s(R.string.st_net_nointernet);
+        return netKind == 2 ? s(R.string.st_net_cable) : netKind == 1 ? s(R.string.st_net_wifi) : s(R.string.st_net_other);
+    }
+
+    private String onOff(boolean on) { return s(on ? R.string.st_on : R.string.st_greeting_off); }
+
+    private void openPanel() {
+        panelFocus = 0;
+        panelOpenedAt = SystemClock.uptimeMillis();
+        popIndex = -1;
+        host.refreshWeather();
+        push(S_PANEL);
+        if (look.sound) sfx.hop(look.soundVolume / 100f);
+    }
+
+    private void closePanel() {
+        if (top() != S_PANEL) return;
+        pop();
+        if (look.sound) sfx.back(look.soundVolume / 100f);
+    }
+
+    private PanelPainter.Tile tile(String glyph, String label, String value, boolean on, Runnable action) {
+        PanelPainter.Tile tile = new PanelPainter.Tile();
+        tile.glyph = glyph;
+        tile.label = label;
+        tile.value = value;
+        tile.on = on;
+        tile.action = action;
+        return tile;
+    }
+
+    private List<PanelPainter.Tile> panelTiles() {
+        List<PanelPainter.Tile> tiles = new ArrayList<>();
+        tiles.add(tile(netGlyph(), netTitle(), netOnline ? s(R.string.st_net_online) : s(R.string.st_net_offline),
+                netOnline, host::openNetworkSettings));
+        tiles.add(tile("bluetooth", "Bluetooth", s(R.string.st_tile_open), false, host::openBluetoothSettings));
+        final boolean clear = look.glassUi && look.iconGlass;
+        tiles.add(tile("drop", s(R.string.st_clear), onOff(clear), clear, () -> {
+            look.setGlassUi(!clear);
+            look.setIconGlass(!clear);
+        }));
+        tiles.add(tile("moon", s(R.string.st_night_short), onOff(look.night), look.night, () -> {
+            look.setNight(!look.night);
+            updateNight();
+        }));
+        tiles.add(tile("sound", s(R.string.st_sound), onOff(look.sound), look.sound, () -> look.setSound(!look.sound)));
+        final boolean saver = look.saverMinutes > 0;
+        tiles.add(tile("tv", s(R.string.st_saver_short),
+                saver ? s(R.string.st_minutes_long, look.saverMinutes) : s(R.string.st_greeting_off), saver, () -> {
+                    look.setSaverMinutes(saver ? 0 : 10);
+                    scheduleSaverCheck();
+                }));
+        tiles.add(tile("globe", s(R.string.st_language), languageName(look.language), false, () -> {
+            int next = (Look.LANGUAGES.indexOf(look.language) + 1) % Look.LANGUAGES.size();
+            if (look.setLanguage(Look.LANGUAGES.get(next))) host.languageChanged();
+        }));
+        tiles.add(tile("apps", s(R.string.st_view), s(R.string.st_view_value), false, host::openClassic));
+        String weather = host.weatherText();
+        PanelPainter.Tile weatherTile = tile("cloud", weather.isEmpty() ? s(R.string.st_weather) : weather,
+                s(R.string.st_weather_place), false, host::refreshWeather);
+        weatherTile.wide = true;
+        tiles.add(weatherTile);
+        PanelPainter.Tile bar = tile("settings", s(R.string.st_settings), "", false, () -> push(S_SETTINGS));
+        bar.bar = true;
+        tiles.add(bar);
+        return tiles;
+    }
+
+    private static float easeOutBack(float t) {
+        float c1 = 1.70158f, c3 = c1 + 1, p = t - 1;
+        return 1 + c3 * p * p * p + c1 * p * p;
+    }
+
+    private void drawPanel(Canvas c, long now) {
+        List<PanelPainter.Tile> tiles = panelTiles();
+        PanelPainter.layout(tiles);
+        long since = now - panelOpenedAt;
+        int level = look.motion ? look.animLevel : 0;
+        float duration = level == 0 ? 180f : level == 2 ? 420f : 300f;
+        float t = look.motion ? Math.max(0f, Math.min(1f, since / duration)) : 1f;
+        float ease = !look.motion ? 1f : level == 2 ? easeOutBack(t) : 1f - (1f - t) * (1f - t) * (1f - t);
+        float popT = popIndex < 0 ? 1f : Math.min(1f, (now - popAt) / 260f);
+        panelPainter.draw(c, look, tiles, Math.min(panelFocus, tiles.size() - 1), 1920f - PanelPainter.W * ease,
+                Math.min(1f, t * 1.2f), since, level, clock, date, popIndex, popT);
+        if (since < 1500 || popT < 1f) postInvalidateOnAnimation();
+    }
+
+    private void panelKey(int key) {
+        List<PanelPainter.Tile> tiles = panelTiles();
+        PanelPainter.layout(tiles);
+        panelFocus = Math.max(0, Math.min(panelFocus, tiles.size() - 1));
+        if (key == KeyEvent.KEYCODE_DPAD_CENTER) {
+            PanelPainter.Tile tile = tiles.get(panelFocus);
+            popIndex = panelFocus;
+            popAt = SystemClock.uptimeMillis();
+            if (look.sound) sfx.pop(look.soundVolume / 100f);
+            if (tile.action != null) tile.action.run();
+            invalidate();
+            return;
+        }
+        PanelPainter.Tile cur = tiles.get(panelFocus);
+        float cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+        int best = -1;
+        float bestScore = Float.MAX_VALUE;
+        for (int i = 0; i < tiles.size(); i++) {
+            if (i == panelFocus) continue;
+            PanelPainter.Tile o = tiles.get(i);
+            float dx = o.x + o.w / 2 - cx, dy = o.y + o.h / 2 - cy;
+            boolean fits;
+            float score;
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN) { fits = dy > 20; score = Math.abs(dy) + Math.abs(dx) * 1.5f; }
+            else if (key == KeyEvent.KEYCODE_DPAD_UP) { fits = dy < -20; score = Math.abs(dy) + Math.abs(dx) * 1.5f; }
+            else if (key == KeyEvent.KEYCODE_DPAD_LEFT) { fits = dx < -20 && Math.abs(dy) < 60; score = Math.abs(dx) + Math.abs(dy) * 3; }
+            else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) { fits = dx > 20 && Math.abs(dy) < 60; score = Math.abs(dx) + Math.abs(dy) * 3; }
+            else { fits = false; score = 0; }
+            if (fits && score < bestScore) { bestScore = score; best = i; }
+        }
+        if (best >= 0) {
+            panelFocus = best;
+            invalidate();
+        }
     }
 
     // ------------------------------------------------------------------ photos, search, screensaver
@@ -683,9 +848,10 @@ public final class StageView extends View {
         int screen = top();
         if (saverOn) {
             drawSaver(canvas, now);
-        } else if (screen == S_HOME) {
+        } else if (screen == S_HOME || screen == S_PANEL) {
             ensureBackdrop();
-            homePainter.draw(canvas, homeFrame(homeZone, scene, backdrop, now));
+            homePainter.draw(canvas, homeFrame(screen == S_PANEL ? HomePainter.Z_NONE : homeZone, scene, backdrop, now));
+            if (screen == S_PANEL) drawPanel(canvas, now);
         } else {
             drawSheet(canvas, screen, now);
         }
@@ -727,9 +893,11 @@ public final class StageView extends View {
         for (int i = 0; i < kinds.length; i++) {
             f.utilLabels[i] = kinds[i] == HomePainter.UTIL_APPS ? s(R.string.st_all_apps)
                     : kinds[i] == HomePainter.UTIL_SEARCH ? s(R.string.st_search)
-                    : kinds[i] == HomePainter.UTIL_INPUTS ? s(R.string.st_inputs) : s(R.string.st_settings);
+                    : kinds[i] == HomePainter.UTIL_NET ? netTitle()
+                    : kinds[i] == HomePainter.UTIL_INPUTS ? s(R.string.st_inputs) : s(R.string.st_panel);
         }
         f.emptyText = s(R.string.st_home_empty);
+        f.netGlyph = netGlyph();
         return f;
     }
 
@@ -737,9 +905,6 @@ public final class StageView extends View {
         SheetPainter.Ink k = SheetPainter.Ink.of(look);
         sheet.background(c, look, scene);
         switch (screen) {
-            case S_SETTINGS:
-                sheet.overview(c, k, s(R.string.st_settings), groupNames(), groupValues(), groupFocus, s(R.string.st_hint_open));
-                break;
             case S_WALLPAPER:
                 drawWallpaperPage(c, k, now);
                 break;
@@ -999,6 +1164,123 @@ public final class StageView extends View {
                 p.hint = s(R.string.st_hint_select);
                 break;
             }
+            case S_SETTINGS: {
+                p = new Page(screen, s(R.string.menu_title), s(R.string.st_settings), false);
+                p.width = 1056;
+                p.top = 204;
+                p.rowHeight = 64;
+                Page.Section sec = p.section(null, false);
+                int[] titles = {R.string.st_cat_general, R.string.st_cat_display, R.string.st_cat_background,
+                        R.string.st_cat_home, R.string.st_cat_apps, R.string.st_cat_devices, R.string.st_cat_network,
+                        R.string.st_cat_fx, R.string.st_language, R.string.st_update_title, R.string.st_cat_about};
+                int[] targets = {S_GENERAL, S_DISPLAY, S_BACKGROUND, S_EDITOR, S_APPS, S_INPUTS, S_NET, S_FX, S_LANG, S_UPDATE, S_ABOUT};
+                for (int i = 0; i < titles.length; i++) {
+                    final int target = targets[i];
+                    Page.Opt o = sec.add(new Page.Opt(s(titles[i]), () -> push(target)));
+                    o.forward = true;
+                }
+                p.hint = s(R.string.st_hint_open);
+                break;
+            }
+            case S_GENERAL: {
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_cat_general), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.descHeight = 100;
+                Page.Section sec = p.section(null, false);
+                Page.Opt lang = sec.add(new Page.Opt(s(R.string.st_language), () -> push(S_LANG)));
+                lang.description = languageName(look.language);
+                lang.forward = true;
+                Page.Opt clockRow = sec.add(new Page.Opt(s(R.string.st_clock), () -> push(S_CLOCK)));
+                clockRow.forward = true;
+                Page.Opt greet = sec.add(new Page.Opt(s(R.string.st_greeting), () -> push(S_GREETING)));
+                greet.description = !look.greetingOn() ? s(R.string.st_greeting_off)
+                        : look.userName().isEmpty() ? s(R.string.st_name_none) : look.userName();
+                greet.forward = true;
+                sec.add(new Page.Opt(s(R.string.st_classic), host::openClassic));
+                sec.add(new Page.Opt(s(R.string.st_tv_settings), host::openTvSettings));
+                p.hint = s(R.string.st_hint_select);
+                break;
+            }
+            case S_DISPLAY: {
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_cat_display), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                Page.Section sec = p.section(null, false);
+                int[] titles = {R.string.st_style, R.string.st_layout, R.string.st_typography, R.string.st_focus};
+                int[] targets = {S_STYLE, S_LAYOUT, S_TYPE, S_FOCUS};
+                for (int i = 0; i < titles.length; i++) {
+                    final int target = targets[i];
+                    Page.Opt o = sec.add(new Page.Opt(s(titles[i]), () -> push(target)));
+                    o.forward = true;
+                }
+                p.hint = s(R.string.st_hint_open);
+                break;
+            }
+            case S_FX: {
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_cat_fx), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.sectionGap = 24;
+                Page.Section an = p.section(s(R.string.st_anim_level), true);
+                int[] levelNames = {R.string.st_anim_calm, R.string.st_anim_normal, R.string.st_anim_ultra};
+                for (int i = 0; i < 3; i++) {
+                    final int level = i;
+                    Page.Opt o = an.add(new Page.Opt(s(levelNames[i]), () -> {
+                        if (look.setAnimLevel(level)) refreshPage(); else host.toast(s(R.string.st_save_failed));
+                    }));
+                    o.checked = look.animLevel == i;
+                }
+                toggleSection(p, s(R.string.st_sound), look.sound, v -> look.setSound(v));
+                Page.Section vol = p.section(s(R.string.st_volume), true);
+                int[] volumes = {25, 50, 75, 100};
+                for (int percent : volumes) {
+                    final int value = percent;
+                    Page.Opt o = vol.add(new Page.Opt(percent + " %", () -> {
+                        if (look.setSoundVolume(value)) {
+                            if (look.sound) sfx.pop(value / 100f);
+                            refreshPage();
+                        } else {
+                            host.toast(s(R.string.st_save_failed));
+                        }
+                    }));
+                    o.checked = look.soundVolume == percent;
+                }
+                p.hint = s(R.string.st_hint_apply);
+                break;
+            }
+            case S_NET: {
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_cat_network), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.descHeight = 100;
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_net_icon), look.netIcon, v -> look.setNetIcon(v));
+                Page.Section sec = p.section(null, false);
+                Page.Opt status = sec.add(new Page.Opt(netTitle(), null));
+                status.description = netOnline ? s(R.string.st_net_online) : s(R.string.st_net_offline);
+                status.enabled = false;
+                sec.add(new Page.Opt(s(R.string.st_net_settings), host::openNetworkSettings));
+                p.hint = s(R.string.st_hint_apply);
+                break;
+            }
+            case S_ABOUT: {
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_cat_about), false);
+                p.width = 1056;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.descHeight = 100;
+                Page.Section sec = p.section(null, false);
+                Page.Opt name = sec.add(new Page.Opt(s(R.string.menu_title), null));
+                name.description = host.versionText();
+                name.enabled = false;
+                p.footnote = s(R.string.st_credits);
+                break;
+            }
             case S_FOLDER: {
                 p = new Page(screen, s(R.string.menu_title), folderKey == null ? "" : folderKey, false);
                 p.width = 1056;
@@ -1081,7 +1363,7 @@ public final class StageView extends View {
                 break;
             }
             case S_UPDATE: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_update_title), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_update_title), false);
                 p.width = 1056;
                 p.top = 212;
                 p.rowHeight = 76;
@@ -1099,7 +1381,7 @@ public final class StageView extends View {
                 break;
             }
             case S_STYLE: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_style), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_style), false);
                 p.width = 1056;
                 p.top = 212;
                 p.rowHeight = 68;
@@ -1128,7 +1410,7 @@ public final class StageView extends View {
                 break;
             }
             case S_LANG: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_language), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_language), false);
                 p.width = 1056;
                 p.top = 260;
                 p.rowHeight = 88;
@@ -1145,7 +1427,7 @@ public final class StageView extends View {
                 break;
             }
             case S_INPUTS: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_inputs), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_inputs), false);
                 p.width = 1056;
                 p.top = 212;
                 p.descHeight = 96;
@@ -1182,7 +1464,7 @@ public final class StageView extends View {
                 break;
             }
             case S_PS4: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_ps4), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_ps4), false);
                 p.width = 1056;
                 p.top = 260;
                 Page.Section sec = p.section(s(R.string.st_ps4_question), false);
@@ -1198,7 +1480,7 @@ public final class StageView extends View {
                 break;
             }
             case S_CLOCK: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_clock), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_clock), false);
                 p.width = 1056;
                 p.top = 260;
                 p.rowHeight = 88;
@@ -1306,7 +1588,7 @@ public final class StageView extends View {
                 break;
             }
             case S_APPS: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_customize), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_customize), false);
                 p.width = 1056;
                 p.top = 204;
                 p.rowHeight = 62;
@@ -1379,7 +1661,7 @@ public final class StageView extends View {
                 break;
             }
             case S_GREETING: {
-                p = new Page(screen, s(R.string.st_group_tv), s(R.string.st_greeting), false);
+                p = new Page(screen, s(R.string.st_settings), s(R.string.st_greeting), false);
                 p.width = 1056;
                 p.top = 260;
                 p.rowHeight = 88;
@@ -1768,7 +2050,7 @@ public final class StageView extends View {
                 && (key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                 || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT
                 || key == KeyEvent.KEYCODE_DPAD_CENTER)) {
-            playSoundEffect(android.view.SoundEffectConstants.CLICK);
+            sfx.tick(look.soundVolume / 100f);
         }
         if (!handled(key)) return super.dispatchKeyEvent(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
@@ -1792,7 +2074,11 @@ public final class StageView extends View {
         }
         if (!down) return true;
         if (key == KeyEvent.KEYCODE_MENU) {
-            if (event.getRepeatCount() == 0) onLong();
+            if (event.getRepeatCount() == 0) {
+                if (top() == S_HOME) openPanel();
+                else if (top() == S_PANEL) closePanel();
+                else onLong();
+            }
             return true;
         }
         onKey(key);
@@ -1835,7 +2121,7 @@ public final class StageView extends View {
     private void onKey(int key) {
         switch (top()) {
             case S_HOME: homeKey(key); break;
-            case S_SETTINGS: settingsKey(key); break;
+            case S_PANEL: panelKey(key); break;
             case S_WALLPAPER: wallpaperKey(key); break;
             case S_ALL: allKey(key); break;
             case S_EDITOR: editorKey(key); break;

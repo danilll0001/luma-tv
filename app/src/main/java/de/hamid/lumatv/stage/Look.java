@@ -70,7 +70,11 @@ final class Look {
     /** 0 normal, 1 large, 2 extra large. */
     int clockSize;
     String accent, photoSource, inputsMode, language;
-    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate, iconGlass;
+    boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate, iconGlass, netIcon;
+    /** 0 calm, 1 normal, 2 ultra. */
+    int animLevel;
+    /** Volume of the interface sounds, 0 to 100. */
+    int soundVolume;
     /** Birthday for the greeting; month 0 = not set. */
     int birthMonth, birthDay;
     /** Minutes of inactivity before the photo screensaver starts; 0 = off. */
@@ -105,6 +109,9 @@ final class Look {
         foldersOn = prefs.getBoolean(P + "folders_on", true);
         autoUpdate = prefs.getBoolean(P + "auto_update", true);
         iconGlass = prefs.getBoolean(P + "icon_glass", true);
+        netIcon = prefs.getBoolean(P + "net_icon", true);
+        animLevel = Math.max(0, Math.min(2, prefs.getInt(P + "anim_level", 1)));
+        soundVolume = Math.max(0, Math.min(100, prefs.getInt(P + "sound_volume", 60)));
         birthMonth = prefs.getInt(P + "birth_month", 0);
         birthDay = prefs.getInt(P + "birth_day", 0);
     }
@@ -186,6 +193,24 @@ final class Look {
     boolean setDateOn(boolean on) {
         if (!prefs.edit().putBoolean(P + "date", on).commit()) return false;
         dateOn = on;
+        return true;
+    }
+
+    boolean setNetIcon(boolean on) {
+        if (!prefs.edit().putBoolean(P + "net_icon", on).commit()) return false;
+        netIcon = on;
+        return true;
+    }
+
+    boolean setAnimLevel(int level) {
+        if (!prefs.edit().putInt(P + "anim_level", level).commit()) return false;
+        animLevel = level;
+        return true;
+    }
+
+    boolean setSoundVolume(int percent) {
+        if (!prefs.edit().putInt(P + "sound_volume", percent).commit()) return false;
+        soundVolume = percent;
         return true;
     }
 

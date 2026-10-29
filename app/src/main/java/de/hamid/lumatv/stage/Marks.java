@@ -60,6 +60,16 @@ final class Marks {
         mark("search", R.drawable.mark_search, 32, 32, 176, 176, .4f);
         mark("pc", R.drawable.mark_pc, 32, 42, 176, 156, .4f);
         mark("folder", R.drawable.mark_folder, 22, 52, 196, 136, .4f);
+        mark("wifi", R.drawable.mark_wifi, 30, 40, 180, 160, .4f);
+        mark("wifi_off", R.drawable.mark_wifi_off, 30, 40, 180, 160, .4f);
+        mark("ethernet", R.drawable.mark_ethernet, 18, 36, 204, 172, .4f);
+        mark("bluetooth", R.drawable.mark_bluetooth, 70, 42, 100, 156, .4f);
+        mark("moon", R.drawable.mark_moon, 44, 40, 150, 160, .4f);
+        mark("sound", R.drawable.mark_sound, 40, 50, 196, 140, .4f);
+        mark("globe", R.drawable.mark_globe, 28, 28, 184, 184, .4f);
+        mark("cloud", R.drawable.mark_cloud, 30, 50, 180, 130, .4f);
+        mark("drop", R.drawable.mark_drop, 40, 32, 160, 180, .4f);
+        mark("sliders", R.drawable.mark_sliders, 30, 56, 180, 130, .4f);
         mark("gamepad", R.drawable.mark_gamepad, 22, 82, 196, 96, .4f);
         mark("tv", R.drawable.mark_tv, 22, 47, 196, 156, .4f);
         mark("receiver", R.drawable.mark_receiver, 17, 87, 206, 86, .4f);

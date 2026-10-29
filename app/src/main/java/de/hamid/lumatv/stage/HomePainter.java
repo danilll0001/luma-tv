@@ -19,7 +19,7 @@ import java.util.List;
  */
 final class HomePainter {
     static final int Z_APPS = 0, Z_UTIL = 1, Z_PREVIEW = 2, Z_NONE = 3;
-    static final int UTIL_APPS = 0, UTIL_SETTINGS = 1, UTIL_INPUTS = 2, UTIL_SEARCH = 3;
+    static final int UTIL_APPS = 0, UTIL_SETTINGS = 1, UTIL_INPUTS = 2, UTIL_SEARCH = 3, UTIL_NET = 4;
 
     static final float PH_TOP = 220, PH_PITCH = 128;
 
@@ -49,6 +49,8 @@ final class HomePainter {
         /** After sunset the photo is dimmed a little. */
         boolean night;
         String[] utilLabels;
+        /** Glyph of the network control: wifi, wifi_off or ethernet. */
+        String netGlyph = "wifi";
         /** Kind of each visible control, left to right (or top to bottom): UTIL_*. */
         int[] utilKinds;
         String emptyText;
@@ -67,7 +69,7 @@ final class HomePainter {
     private final Paint layer = new Paint();
     private final Paint mask = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
-    private final float[] utilX = new float[4], utilW = new float[4], utilY = new float[4];
+    private final float[] utilX = new float[5], utilW = new float[5], utilY = new float[5];
 
     HomePainter(Gfx g, Type type, Marks marks) {
         this.g = g;
@@ -624,7 +626,7 @@ final class HomePainter {
                 if (region.pol == Walls.POL_DARK) g.shadow(2, 1, Color2.rgba(255, 248, 236, .24f));
                 else g.shadow(2, 1, Color2.rgba(14, 10, 6, .40f));
             }
-            String glyph = settings ? "settings" : kind == UTIL_INPUTS ? "inputs" : kind == UTIL_SEARCH ? "search" : "apps";
+            String glyph = settings ? "sliders" : kind == UTIL_NET ? f.netGlyph : kind == UTIL_INPUTS ? "inputs" : kind == UTIL_SEARCH ? "search" : "apps";
             float iconSize = icons ? 36 : dock ? (settings ? 34 : 32) : (settings ? 34 : 36);
             if (icons) {
                 marks.glyph(c, glyph, x + (64 - iconSize) / 2, y + 32 - iconSize / 2, iconSize, color);

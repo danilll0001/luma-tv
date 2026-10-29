@@ -143,6 +143,16 @@ public final class StageActivity extends Activity implements StageView.Host {
         clockTick.run();
         refreshInputs();
         scanPhotos(false);
+        try {
+            connectivity = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivity != null && !netRegistered) {
+                connectivity.registerDefaultNetworkCallback(netCallback);
+                netRegistered = true;
+            }
+        } catch (RuntimeException unavailable) {
+            netRegistered = false;
+        }
+        updateNetwork();
         if (!installRegistered) {
             android.content.IntentFilter filter = new android.content.IntentFilter(ACTION_INSTALL);
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(installResult, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -168,6 +178,14 @@ public final class StageActivity extends Activity implements StageView.Host {
     @Override protected void onPause() {
         resumed = false;
         main.removeCallbacks(clockTick);
+        if (connectivity != null && netRegistered) {
+            try {
+                connectivity.unregisterNetworkCallback(netCallback);
+            } catch (RuntimeException ignored) {
+                // Already gone.
+            }
+            netRegistered = false;
+        }
         if (tvManager != null) {
             try {
                 tvManager.unregisterCallback(inputCallback);
@@ -768,6 +786,106 @@ public final class StageActivity extends Activity implements StageView.Host {
 
     @Override public void languageChanged() {
         recreate();
+    }
+
+    // ------------------------------------------------------------------ network, weather, system settings
+
+    private android.net.ConnectivityManager connectivity;
+    private boolean netRegistered;
+    private String weatherText = "";
+    private long weatherAt;
+
+    private final android.net.ConnectivityManager.NetworkCallback netCallback = new android.net.ConnectivityManager.NetworkCallback() {
+        @Override public void onAvailable(android.net.Network network) { main.post(StageActivity.this::updateNetwork); }
+
+        @Override public void onLost(android.net.Network network) { main.post(StageActivity.this::updateNetwork); }
+
+        @Override public void onCapabilitiesChanged(android.net.Network network, android.net.NetworkCapabilities caps) {
+            main.post(StageActivity.this::updateNetwork);
+        }
+    };
+
+    private void updateNetwork() {
+        int kind = 0;
+        boolean online = false;
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.Network active = cm == null ? null : cm.getActiveNetwork();
+            android.net.NetworkCapabilities caps = active == null ? null : cm.getNetworkCapabilities(active);
+            if (caps != null) {
+                kind = caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) ? 2
+                        : caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ? 1 : 3;
+                online = caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            }
+        } catch (RuntimeException unavailable) {
+            kind = 0;
+        }
+        stage.setNetwork(kind, online);
+    }
+
+    private void openSettingsScreen(String action) {
+        try {
+            startActivity(new Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (RuntimeException missing) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException none) {
+                toast(getString(R.string.settings_unavailable));
+            }
+        }
+    }
+
+    @Override public void openNetworkSettings() { openSettingsScreen(Settings.ACTION_WIFI_SETTINGS); }
+
+    @Override public void openBluetoothSettings() { openSettingsScreen(Settings.ACTION_BLUETOOTH_SETTINGS); }
+
+    @Override public String versionText() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception unknown) {
+            return "";
+        }
+    }
+
+    @Override public String weatherText() { return weatherText; }
+
+    private int weatherWord(int code) {
+        if (code == 0) return R.string.st_wx_clear;
+        if (code <= 3) return R.string.st_wx_cloudy;
+        if (code == 45 || code == 48) return R.string.st_wx_fog;
+        if ((code >= 71 && code <= 77) || code == 85 || code == 86) return R.string.st_wx_snow;
+        if (code >= 95) return R.string.st_wx_storm;
+        return R.string.st_wx_rain;
+    }
+
+    /** Current weather for Reutlingen from open-meteo.com (no key, only temperature and weather code). */
+    @Override public void refreshWeather() {
+        long now = System.currentTimeMillis();
+        if (!weatherText.isEmpty() && now - weatherAt < 15 * 60 * 1000L) return;
+        weatherAt = now;
+        worker.execute(() -> {
+            String text = "";
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(
+                        "https://api.open-meteo.com/v1/forecast?latitude=48.49&longitude=9.21&current=temperature_2m,weather_code")
+                        .openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                if (c.getResponseCode() == 200) {
+                    org.json.JSONObject current = new org.json.JSONObject(readAll(c.getInputStream())).getJSONObject("current");
+                    long temp = Math.round(current.getDouble("temperature_2m"));
+                    text = temp + " \u00b0C \u00b7 " + getString(weatherWord(current.getInt("weather_code")));
+                }
+            } catch (java.io.IOException | org.json.JSONException | RuntimeException offline) {
+                text = "";
+            }
+            final String result = text;
+            main.post(() -> {
+                if (isDestroyed()) return;
+                if (result.isEmpty()) weatherAt = 0; else weatherText = result;
+                stage.nameChanged();
+            });
+        });
     }
 
     // ------------------------------------------------------------------ dialogs, updates, backup

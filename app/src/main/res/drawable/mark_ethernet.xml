@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp" android:height="240dp"
+    android:viewportWidth="240" android:viewportHeight="240">
+    <path android:pathData="M 90,40 H 150 V 90 H 90 Z M 120,90 V 130 M 50,130 H 190 M 50,130 V 150 M 190,130 V 150 M 20,150 H 80 V 200 H 20 Z M 160,150 H 220 V 200 H 160 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="16.000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>
