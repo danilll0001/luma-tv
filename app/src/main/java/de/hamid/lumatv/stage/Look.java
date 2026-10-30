@@ -71,7 +71,7 @@ final class Look {
     int clockSize;
     String accent, photoSource, inputsMode, language;
     boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate, iconGlass, netIcon;
-    boolean colorIcons, popups, autoInputs, twoRows;
+    boolean colorIcons, popups, autoInputs, twoRows, navSound;
     /** 0 Pop, 1 Glass, 2 Marimba, 3 Retro, 4 Soft. */
     int soundTheme;
     /** 0 calm, 1 normal, 2 ultra. */
@@ -115,8 +115,9 @@ final class Look {
         netIcon = prefs.getBoolean(P + "net_icon", true);
         colorIcons = prefs.getBoolean(P + "color_icons", true);
         popups = prefs.getBoolean(P + "popups", true);
-        autoInputs = prefs.getBoolean(P + "auto_inputs", true);
-        twoRows = prefs.getBoolean(P + "two_rows", false);
+        autoInputs = prefs.getBoolean(P + "auto_inputs", false);
+        twoRows = prefs.getBoolean(P + "two_rows", true);
+        navSound = prefs.getBoolean(P + "nav_sound", false);
         soundTheme = Math.max(0, Math.min(Sfx.THEMES - 1, prefs.getInt(P + "sound_theme", 0)));
         animLevel = Math.max(0, Math.min(2, prefs.getInt(P + "anim_level", 1)));
         soundVolume = Math.max(0, Math.min(100, prefs.getInt(P + "sound_volume", 60)));
@@ -213,6 +214,12 @@ final class Look {
     boolean setPopups(boolean on) {
         if (!prefs.edit().putBoolean(P + "popups", on).commit()) return false;
         popups = on;
+        return true;
+    }
+
+    boolean setNavSound(boolean on) {
+        if (!prefs.edit().putBoolean(P + "nav_sound", on).commit()) return false;
+        navSound = on;
         return true;
     }
 

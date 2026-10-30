@@ -85,6 +85,17 @@ final class HomePainter {
 
     // ------------------------------------------------------------------ geometry
 
+    /** Grey, slightly lifted version of a coloured logo (glass look). */
+    private static final android.graphics.ColorMatrixColorFilter GREY = greyFilter();
+
+    private static android.graphics.ColorMatrixColorFilter greyFilter() {
+        android.graphics.ColorMatrix matrix = new android.graphics.ColorMatrix();
+        matrix.setSaturation(0f);
+        matrix.postConcat(new android.graphics.ColorMatrix(new float[]{
+                1.1f, 0, 0, 0, 40, 0, 1.1f, 0, 0, 40, 0, 0, 1.1f, 0, 40, 0, 0, 0, 1, 0}));
+        return new android.graphics.ColorMatrixColorFilter(matrix);
+    }
+
     static Geom dock(String apps, int n) { return dock(apps, n, false); }
 
     static Geom dock(String apps, int n, boolean twoRows) {
@@ -406,15 +417,20 @@ final class HomePainter {
             int ms = c.save();
             if (glass && focus) c.scale(1.04f, 1.04f, left + bx + bw / 2, top + by + bh / 2 - 3);
             if (glass && focus) c.translate(0, -3);
-            boolean original = f.look.colorIcons && item.icon != null;
-            int iconColor = f.look.iconGlass ? Color2.fade(ink, opacity * (original ? .8f : .6f)) : color;
-            if (original) {
-                // The app's own coloured logo; Clear makes it see-through.
+            // Clear off: the app's own coloured logo. Clear on: white glass logos; apps without a bundled
+            // mark get their own logo in grey, so no letter placeholders are left.
+            boolean clearIcons = f.look.iconGlass;
+            boolean colored = f.look.colorIcons && !clearIcons && item.icon != null;
+            boolean greyLogo = clearIcons && item.mark == null && item.icon != null;
+            int iconColor = clearIcons ? Color2.fade(ink, opacity * .85f) : color;
+            if (colored || greyLogo) {
                 float side = Math.min(Math.min(bw, bh), size * 1.25f);
                 float ix = left + bx + (bw - side) / 2, iy = top + by + (bh - side) / 2;
                 item.icon.setBounds(Math.round(ix), Math.round(iy), Math.round(ix + side), Math.round(iy + side));
                 item.icon.setAlpha(Color2.alpha(iconColor));
+                if (greyLogo) item.icon.setColorFilter(GREY);
                 item.icon.draw(c);
+                item.icon.setColorFilter(null);
             } else {
                 marks.item(c, item, left + bx, top + by, bw, bh, size, iconColor, false, mono);
             }

@@ -301,7 +301,23 @@ public final class StageActivity extends Activity implements StageView.Host {
     }
 
     /** Puts every HDMI input the TV reports on Home once; removed ones stay removed. */
+    /** Once: HDMI inputs belong in All apps, so tiles the launcher added to Home earlier are taken off again. */
+    private void cleanAutoInputs() {
+        android.content.SharedPreferences shared = getSharedPreferences("luma_home", MODE_PRIVATE);
+        if (shared.getBoolean("stage_inputs_clean_v1", false)) return;
+        shared.edit().putBoolean("stage_inputs_clean_v1", true).commit();
+        List<String> seen = look.seenInputs();
+        if (seen.isEmpty()) return;
+        List<String> keys = look.homeKeys();
+        boolean changed = false;
+        for (String id : seen) changed |= keys.remove(Look.INPUT_PREFIX + id);
+        if (changed && look.saveHomeKeys(keys)) {
+            if (resumed) loadCatalog(); else catalogDirty = true;
+        }
+    }
+
     private void autoAddInputs() {
+        cleanAutoInputs();
         if (!look.autoInputs || inputCache.isEmpty()) return;
         List<String> seen = look.seenInputs();
         List<String> keys = look.homeKeys();

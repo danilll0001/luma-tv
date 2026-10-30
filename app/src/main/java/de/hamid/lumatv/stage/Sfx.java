@@ -17,58 +17,75 @@ final class Sfx {
 
     Sfx() { setTheme(0); }
 
-    /** 0 Pop, 1 Glass, 2 Marimba, 3 Retro, 4 Soft. */
+    /** 0 Water, 1 Chime, 2 Wood, 3 Harp, 4 Air: soft, short and quiet enough to hear all day. */
     void setTheme(int theme) {
         switch (theme) {
             case 1:
-                tick = tone(1, 2200, 2200, 14, .30f, 6);
-                pop = tone(1, 1320, 1320, 260, .55f, 5);
-                hop = tone(1, 990, 1480, 320, .55f, 5);
-                back = tone(1, 1480, 990, 220, .50f, 5);
+                tick = tone(1, 1319, 1319, 14, .06f, 6, 3);
+                pop = tone(1, 659, 659, 320, .30f, 5, 6);
+                hop = join(tone(1, 523, 523, 140, .26f, 4, 6), tone(1, 784, 784, 300, .28f, 5, 6));
+                back = join(tone(1, 784, 784, 120, .24f, 4, 6), tone(1, 523, 523, 240, .26f, 5, 6));
                 break;
             case 2:
-                tick = tone(2, 900, 900, 20, .35f, 8);
-                pop = tone(2, 660, 660, 200, .70f, 7);
-                hop = tone(2, 523, 784, 220, .70f, 6);
-                back = tone(2, 784, 523, 180, .65f, 6);
+                tick = tone(2, 620, 620, 9, .06f, 8, 1.5f);
+                pop = tone(2, 330, 330, 110, .34f, 9, 2);
+                hop = join(tone(2, 262, 262, 90, .30f, 9, 2), tone(2, 392, 392, 140, .32f, 9, 2));
+                back = join(tone(2, 392, 392, 90, .28f, 9, 2), tone(2, 262, 262, 130, .30f, 9, 2));
                 break;
             case 3:
-                tick = tone(3, 1800, 1800, 10, .20f, 4);
-                pop = tone(3, 880, 1320, 80, .30f, 5);
-                hop = tone(3, 330, 990, 160, .30f, 3);
-                back = tone(3, 990, 330, 140, .30f, 3);
+                tick = tone(3, 1046, 1046, 12, .05f, 6, 2);
+                pop = tone(3, 880, 880, 420, .26f, 6, 4);
+                hop = join(tone(3, 523, 523, 100, .22f, 5, 4), tone(3, 659, 659, 100, .22f, 5, 4),
+                        tone(3, 784, 784, 320, .26f, 6, 4));
+                back = join(tone(3, 784, 784, 100, .20f, 5, 4), tone(3, 659, 659, 100, .20f, 5, 4),
+                        tone(3, 523, 523, 260, .24f, 6, 4));
                 break;
             case 4:
-                tick = tone(0, 900, 900, 24, .22f, 5);
-                pop = tone(0, 330, 392, 180, .60f, 4);
-                hop = tone(0, 262, 392, 260, .60f, 3.5f);
-                back = tone(0, 392, 262, 200, .55f, 4);
+                tick = tone(0, 440, 440, 18, .05f, 4, 5);
+                pop = tone(0, 330, 330, 240, .30f, 3, 40);
+                hop = tone(0, 262, 392, 320, .30f, 3, 60);
+                back = tone(0, 392, 262, 260, .28f, 3, 40);
                 break;
             default:
-                tick = tone(0, 1500, 1500, 18, .30f, 4);
-                pop = tone(0, 520, 980, 110, .70f, 4);
-                hop = tone(0, 380, 860, 170, .70f, 4);
-                back = tone(0, 820, 420, 120, .60f, 4);
+                tick = tone(0, 700, 520, 24, .08f, 4, 4);
+                pop = tone(0, 560, 340, 140, .34f, 5, 6);
+                hop = tone(0, 392, 523, 240, .32f, 4, 20);
+                back = tone(0, 523, 392, 180, .30f, 4, 14);
                 break;
         }
     }
 
-    private static short[] tone(int wave, float f0, float f1, int ms, float gain, float decay) {
+    private static short[] join(short[]... parts) {
+        int total = 0;
+        for (short[] part : parts) total += part.length;
+        short[] out = new short[total];
+        int at = 0;
+        for (short[] part : parts) {
+            System.arraycopy(part, 0, out, at, part.length);
+            at += part.length;
+        }
+        return out;
+    }
+
+    private static short[] tone(int wave, float f0, float f1, int ms, float gain, float decay, float attackMs) {
         int n = RATE * ms / 1000;
         short[] out = new short[n];
         double phase = 0;
+        double attack = Math.max(1.0, RATE * attackMs / 1000.0);
+        double tail = RATE * 0.012;
         for (int i = 0; i < n; i++) {
             double t = i / (double) n;
             phase += 2 * Math.PI * (f0 + (f1 - f0) * t) / RATE;
             double s;
             switch (wave) {
-                case 1: s = (Math.sin(phase) + .45 * Math.sin(phase * 2.76) + .2 * Math.sin(phase * 5.4)) / 1.65; break;
-                case 2: s = (Math.sin(phase) + .5 * Math.sin(phase * 4) + .25 * Math.sin(phase * 10)) / 1.75; break;
-                case 3: s = Math.sin(phase) >= 0 ? 1 : -1; break;
-                default: s = (Math.sin(phase) + .2 * Math.sin(phase * 2)) / 1.2; break;
+                case 1: s = (Math.sin(phase) + .35 * Math.sin(phase * 2) + .15 * Math.sin(phase * 3)) / 1.5; break;
+                case 2: s = (Math.sin(phase) + .25 * Math.sin(phase * 2)) / 1.25; break;
+                case 3: s = (Math.sin(phase) + .5 * Math.sin(phase * 2) * Math.exp(-3 * t)
+                        + .3 * Math.sin(phase * 3) * Math.exp(-5 * t)) / 1.8; break;
+                default: s = Math.sin(phase); break;
             }
-            double env = Math.exp(-decay * t) * Math.min(1.0, i / (RATE * 0.004));
-            out[i] = (short) (s * env * gain * 32767 * 0.6);
+            double env = Math.exp(-decay * t) * Math.min(1.0, i / attack) * Math.min(1.0, (n - i) / tail);
+            out[i] = (short) (s * env * gain * 32767);
         }
         return out;
     }

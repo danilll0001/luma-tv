@@ -1352,6 +1352,8 @@ public final class StageView extends View {
                     }));
                     o.checked = look.soundTheme == i;
                 }
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_navsound), look.navSound, v -> look.setNavSound(v));
                 p.hint = s(R.string.st_hint_apply);
                 break;
             }
@@ -2160,7 +2162,7 @@ public final class StageView extends View {
             if (event.getAction() == KeyEvent.ACTION_UP) swallowKey = -1;
             return true;
         }
-        if (look.sound && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
+        if (look.sound && look.navSound && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
                 && (key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                 || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT
                 || key == KeyEvent.KEYCODE_DPAD_CENTER)) {
