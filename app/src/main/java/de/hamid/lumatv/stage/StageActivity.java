@@ -65,10 +65,25 @@ public final class StageActivity extends Activity implements StageView.Host {
     private int catalogToken;
     private Map<String, String> inputCache = new LinkedHashMap<>();
     private TvInputManager tvManager;
+    private final Map<String, Integer> inputStates = new java.util.HashMap<>();
+    private boolean devicesRegistered;
 
     /** Keeps the Inputs control on Home current while a device is plugged in or removed. */
     private final TvInputManager.TvInputCallback inputCallback = new TvInputManager.TvInputCallback() {
-        @Override public void onInputStateChanged(String inputId, int state) { refreshInputs(); }
+        @Override public void onInputStateChanged(String inputId, int state) {
+            Integer previous = inputStates.put(inputId, state);
+            refreshInputs();
+            boolean plugged = state == TvInputManager.INPUT_STATE_CONNECTED
+                    || state == TvInputManager.INPUT_STATE_CONNECTED_STANDBY;
+            boolean wasPlugged = previous != null && (previous == TvInputManager.INPUT_STATE_CONNECTED
+                    || previous == TvInputManager.INPUT_STATE_CONNECTED_STANDBY);
+            if (plugged && previous != null && !wasPlugged && look.popups) {
+                String label = inputCache.get(inputId);
+                final String id = inputId;
+                stage.showPopup("inputs", label != null ? getString(R.string.st_pop_input, label) : getString(R.string.st_pop_hdmi),
+                        getString(R.string.st_pop_hint), () -> openInput(id));
+            }
+        }
         @Override public void onInputAdded(String inputId) { refreshInputs(); }
         @Override public void onInputRemoved(String inputId) { refreshInputs(); }
     };
@@ -153,6 +168,20 @@ public final class StageActivity extends Activity implements StageView.Host {
             netRegistered = false;
         }
         updateNetwork();
+        if (!devicesRegistered) {
+            android.content.IntentFilter media = new android.content.IntentFilter(Intent.ACTION_MEDIA_MOUNTED);
+            media.addDataScheme("file");
+            registerReceiver(deviceReceiver, media);
+            registerReceiver(deviceReceiver, new android.content.IntentFilter("android.hardware.usb.action.USB_DEVICE_ATTACHED"));
+            registerReceiver(deviceReceiver, new android.content.IntentFilter("android.bluetooth.device.action.ACL_CONNECTED"));
+            devicesRegistered = true;
+        }
+        android.content.SharedPreferences shared = getSharedPreferences("luma_home", MODE_PRIVATE);
+        if (Build.VERSION.SDK_INT >= 31 && look.popups && !shared.getBoolean("stage_bt_asked", false)
+                && checkSelfPermission("android.permission.BLUETOOTH_CONNECT") != PackageManager.PERMISSION_GRANTED) {
+            shared.edit().putBoolean("stage_bt_asked", true).commit();
+            requestPermissions(new String[]{"android.permission.BLUETOOTH_CONNECT"}, 43);
+        }
         if (!installRegistered) {
             android.content.IntentFilter filter = new android.content.IntentFilter(ACTION_INSTALL);
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(installResult, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -203,6 +232,10 @@ public final class StageActivity extends Activity implements StageView.Host {
         if (installRegistered) {
             try { unregisterReceiver(installResult); } catch (RuntimeException ignored) { }
             installRegistered = false;
+        }
+        if (devicesRegistered) {
+            try { unregisterReceiver(deviceReceiver); } catch (RuntimeException ignored) { }
+            devicesRegistered = false;
         }
         worker.shutdownNow();
         main.removeCallbacksAndMessages(null);
@@ -256,6 +289,7 @@ public final class StageActivity extends Activity implements StageView.Host {
             for (TvInputInfo input : HdmiRepository.discover(this)) {
                 String label = HdmiRepository.label(this, input);
                 labels.put(input.getId(), label);
+                inputStates.putIfAbsent(input.getId(), HdmiRepository.state(this, input));
                 if (HdmiRepository.connected(this, input)) plugged.put(input.getId(), label);
             }
         } catch (RuntimeException unavailable) {
@@ -263,6 +297,29 @@ public final class StageActivity extends Activity implements StageView.Host {
         }
         inputCache = labels;
         stage.setConnectedInputs(plugged);
+        autoAddInputs();
+    }
+
+    /** Puts every HDMI input the TV reports on Home once; removed ones stay removed. */
+    private void autoAddInputs() {
+        if (!look.autoInputs || inputCache.isEmpty()) return;
+        List<String> seen = look.seenInputs();
+        List<String> keys = look.homeKeys();
+        boolean added = false, fresh = false;
+        for (String id : inputCache.keySet()) {
+            if (seen.contains(id)) continue;
+            seen.add(id);
+            fresh = true;
+            String key = Look.INPUT_PREFIX + id;
+            if (!keys.contains(key) && keys.size() < Look.HOME_MAX) {
+                keys.add(key);
+                added = true;
+            }
+        }
+        if (fresh) look.setSeenInputs(seen);
+        if (added && look.saveHomeKeys(keys)) {
+            if (resumed) loadCatalog(); else catalogDirty = true;
+        }
     }
 
     private void loadCatalog() {
@@ -281,7 +338,7 @@ public final class StageActivity extends Activity implements StageView.Host {
                 String pickedMark = look.customMark(pkg);
                 if (Marks.has(pickedMark)) mark = pickedMark;
                 Drawable icon = null;
-                if (mark == null) {
+                if (mark == null || (look.colorIcons && !Marks.has(pickedMark))) {
                     try {
                         icon = pm.getActivityIcon(entry.component);
                     } catch (PackageManager.NameNotFoundException | RuntimeException gone) {
@@ -834,6 +891,18 @@ public final class StageActivity extends Activity implements StageView.Host {
             }
         }
     }
+
+    private final android.content.BroadcastReceiver deviceReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (!look.popups || intent.getAction() == null) return;
+            if ("android.bluetooth.device.action.ACL_CONNECTED".equals(intent.getAction())) {
+                stage.showPopup("bluetooth", getString(R.string.st_pop_bt), getString(R.string.st_pop_hint),
+                        StageActivity.this::openBluetoothSettings);
+            } else {
+                stage.showPopup("usb", getString(R.string.st_pop_usb), getString(R.string.st_pop_hint), () -> stage.openMedia());
+            }
+        }
+    };
 
     @Override public void openNetworkSettings() { openSettingsScreen(Settings.ACTION_WIFI_SETTINGS); }
 

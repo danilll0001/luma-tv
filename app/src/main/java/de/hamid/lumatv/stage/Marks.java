@@ -61,6 +61,7 @@ final class Marks {
         mark("pc", R.drawable.mark_pc, 32, 42, 176, 156, .4f);
         mark("folder", R.drawable.mark_folder, 22, 52, 196, 136, .4f);
         mark("wifi", R.drawable.mark_wifi, 30, 40, 180, 160, .4f);
+        mark("usb", R.drawable.mark_usb, 24, 52, 190, 134, .4f);
         mark("wifi_off", R.drawable.mark_wifi_off, 30, 40, 180, 160, .4f);
         mark("ethernet", R.drawable.mark_ethernet, 18, 36, 204, 172, .4f);
         mark("bluetooth", R.drawable.mark_bluetooth, 70, 42, 100, 156, .4f);

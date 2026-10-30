@@ -7,25 +7,68 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 
-/** Short synthesized sounds (tick, pop, hop). Nothing is stored or downloaded. */
+/** Short synthesized sounds in five themes (tick, pop, hop, back). Nothing is stored or downloaded. */
 final class Sfx {
     private static final int RATE = 22050;
+    static final int THEMES = 5;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final short[] tick = tone(1500, 1500, 18, .30f);
-    private final short[] pop = tone(520, 980, 110, .70f);
-    private final short[] hop = tone(380, 860, 170, .70f);
-    private final short[] back = tone(820, 420, 120, .60f);
+    private short[] tick, pop, hop, back;
     private long lastTick;
 
-    private static short[] tone(float f0, float f1, int ms, float gain) {
+    Sfx() { setTheme(0); }
+
+    /** 0 Pop, 1 Glass, 2 Marimba, 3 Retro, 4 Soft. */
+    void setTheme(int theme) {
+        switch (theme) {
+            case 1:
+                tick = tone(1, 2200, 2200, 14, .30f, 6);
+                pop = tone(1, 1320, 1320, 260, .55f, 5);
+                hop = tone(1, 990, 1480, 320, .55f, 5);
+                back = tone(1, 1480, 990, 220, .50f, 5);
+                break;
+            case 2:
+                tick = tone(2, 900, 900, 20, .35f, 8);
+                pop = tone(2, 660, 660, 200, .70f, 7);
+                hop = tone(2, 523, 784, 220, .70f, 6);
+                back = tone(2, 784, 523, 180, .65f, 6);
+                break;
+            case 3:
+                tick = tone(3, 1800, 1800, 10, .20f, 4);
+                pop = tone(3, 880, 1320, 80, .30f, 5);
+                hop = tone(3, 330, 990, 160, .30f, 3);
+                back = tone(3, 990, 330, 140, .30f, 3);
+                break;
+            case 4:
+                tick = tone(0, 900, 900, 24, .22f, 5);
+                pop = tone(0, 330, 392, 180, .60f, 4);
+                hop = tone(0, 262, 392, 260, .60f, 3.5f);
+                back = tone(0, 392, 262, 200, .55f, 4);
+                break;
+            default:
+                tick = tone(0, 1500, 1500, 18, .30f, 4);
+                pop = tone(0, 520, 980, 110, .70f, 4);
+                hop = tone(0, 380, 860, 170, .70f, 4);
+                back = tone(0, 820, 420, 120, .60f, 4);
+                break;
+        }
+    }
+
+    private static short[] tone(int wave, float f0, float f1, int ms, float gain, float decay) {
         int n = RATE * ms / 1000;
         short[] out = new short[n];
         double phase = 0;
         for (int i = 0; i < n; i++) {
             double t = i / (double) n;
             phase += 2 * Math.PI * (f0 + (f1 - f0) * t) / RATE;
-            double attack = Math.min(1.0, i / (RATE * 0.004));
-            out[i] = (short) (Math.sin(phase) * Math.exp(-4 * t) * attack * gain * 32767 * 0.6);
+            double s;
+            switch (wave) {
+                case 1: s = (Math.sin(phase) + .45 * Math.sin(phase * 2.76) + .2 * Math.sin(phase * 5.4)) / 1.65; break;
+                case 2: s = (Math.sin(phase) + .5 * Math.sin(phase * 4) + .25 * Math.sin(phase * 10)) / 1.75; break;
+                case 3: s = Math.sin(phase) >= 0 ? 1 : -1; break;
+                default: s = (Math.sin(phase) + .2 * Math.sin(phase * 2)) / 1.2; break;
+            }
+            double env = Math.exp(-decay * t) * Math.min(1.0, i / (RATE * 0.004));
+            out[i] = (short) (s * env * gain * 32767 * 0.6);
         }
         return out;
     }

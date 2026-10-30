@@ -37,6 +37,17 @@ public final class HdmiRepository {
         }
     }
 
+    /** Raw input state: 0 plugged, 1 standby, 2 unplugged, -1 unknown. */
+    public static int state(Context context, TvInputInfo input) {
+        TvInputManager manager = (TvInputManager) context.getSystemService(Context.TV_INPUT_SERVICE);
+        if (manager == null) return -1;
+        try {
+            return manager.getInputState(input.getId());
+        } catch (RuntimeException unavailable) {
+            return -1;
+        }
+    }
+
     /** Short diagnostic text for the inputs page: raw input state (0 plugged, 1 standby, 2 unplugged) and CEC devices. */
     public static String describe(Context context, TvInputInfo input) {
         TvInputManager manager = (TvInputManager) context.getSystemService(Context.TV_INPUT_SERVICE);

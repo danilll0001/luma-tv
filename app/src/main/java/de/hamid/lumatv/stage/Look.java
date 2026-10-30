@@ -71,6 +71,9 @@ final class Look {
     int clockSize;
     String accent, photoSource, inputsMode, language;
     boolean shuffle, recentFirst, dateOn, fade, glassUi, sound, night, foldersOn, autoUpdate, iconGlass, netIcon;
+    boolean colorIcons, popups, autoInputs, twoRows;
+    /** 0 Pop, 1 Glass, 2 Marimba, 3 Retro, 4 Soft. */
+    int soundTheme;
     /** 0 calm, 1 normal, 2 ultra. */
     int animLevel;
     /** Volume of the interface sounds, 0 to 100. */
@@ -110,6 +113,11 @@ final class Look {
         autoUpdate = prefs.getBoolean(P + "auto_update", true);
         iconGlass = prefs.getBoolean(P + "icon_glass", true);
         netIcon = prefs.getBoolean(P + "net_icon", true);
+        colorIcons = prefs.getBoolean(P + "color_icons", true);
+        popups = prefs.getBoolean(P + "popups", true);
+        autoInputs = prefs.getBoolean(P + "auto_inputs", true);
+        twoRows = prefs.getBoolean(P + "two_rows", false);
+        soundTheme = Math.max(0, Math.min(Sfx.THEMES - 1, prefs.getInt(P + "sound_theme", 0)));
         animLevel = Math.max(0, Math.min(2, prefs.getInt(P + "anim_level", 1)));
         soundVolume = Math.max(0, Math.min(100, prefs.getInt(P + "sound_volume", 60)));
         birthMonth = prefs.getInt(P + "birth_month", 0);
@@ -194,6 +202,54 @@ final class Look {
         if (!prefs.edit().putBoolean(P + "date", on).commit()) return false;
         dateOn = on;
         return true;
+    }
+
+    boolean setColorIcons(boolean on) {
+        if (!prefs.edit().putBoolean(P + "color_icons", on).commit()) return false;
+        colorIcons = on;
+        return true;
+    }
+
+    boolean setPopups(boolean on) {
+        if (!prefs.edit().putBoolean(P + "popups", on).commit()) return false;
+        popups = on;
+        return true;
+    }
+
+    boolean setAutoInputs(boolean on) {
+        if (!prefs.edit().putBoolean(P + "auto_inputs", on).commit()) return false;
+        autoInputs = on;
+        return true;
+    }
+
+    boolean setTwoRows(boolean on) {
+        if (!prefs.edit().putBoolean(P + "two_rows", on).commit()) return false;
+        twoRows = on;
+        return true;
+    }
+
+    boolean setSoundTheme(int theme) {
+        if (!prefs.edit().putInt(P + "sound_theme", theme).commit()) return false;
+        soundTheme = theme;
+        return true;
+    }
+
+    /** HDMI inputs the launcher already put on Home once, so removed ones stay removed. */
+    java.util.List<String> seenInputs() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(prefs.getString("stage_seen_inputs_v1", "[]"));
+            for (int i = 0; i < array.length(); i++) out.add(array.getString(i));
+        } catch (JSONException broken) {
+            out.clear();
+        }
+        return out;
+    }
+
+    boolean setSeenInputs(java.util.List<String> ids) {
+        JSONArray array = new JSONArray();
+        for (String id : ids) array.put(id);
+        return prefs.edit().putString("stage_seen_inputs_v1", array.toString()).commit();
     }
 
     boolean setNetIcon(boolean on) {

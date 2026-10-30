@@ -48,6 +48,9 @@ final class HomePainter {
         float fade;
         /** After sunset the photo is dimmed a little. */
         boolean night;
+        /** Two dock rows (up to five apps each) and the animated row of the focus plate. */
+        boolean rows2;
+        float plateRow;
         String[] utilLabels;
         /** Glyph of the network control: wifi, wifi_off or ethernet. */
         String netGlyph = "wifi";
@@ -60,6 +63,7 @@ final class HomePainter {
         float x, y, w, h, shelf, tw, th, pitch;
         int vis;
         boolean broad;
+        boolean rows2;
     }
 
     private final Gfx g;
@@ -81,7 +85,9 @@ final class HomePainter {
 
     // ------------------------------------------------------------------ geometry
 
-    static Geom dock(String apps, int n) {
+    static Geom dock(String apps, int n) { return dock(apps, n, false); }
+
+    static Geom dock(String apps, int n, boolean twoRows) {
         Geom geom = new Geom();
         if (Look.SHOW_TEXT.equals(apps)) { geom.tw = 288; geom.th = 104; geom.pitch = 296; }
         else if (Look.SHOW_ICONS.equals(apps)) { geom.tw = 176; geom.th = 144; geom.pitch = 184; }
@@ -95,6 +101,16 @@ final class HomePainter {
         geom.x = Math.round((1920 - geom.w) / 2);
         geom.y = 908 - geom.th - 32;
         geom.h = geom.th + 32;
+        if (twoRows && n > 5) {
+            geom.rows2 = true;
+            geom.broad = false;
+            geom.vis = 5;
+            geom.shelf = 5 * geom.pitch - 8;
+            geom.w = geom.shelf + 32;
+            geom.x = Math.round((1920 - geom.w) / 2);
+            geom.h = 2 * geom.th + 24 + 32;
+            geom.y = 908 - geom.h;
+        }
         return geom;
     }
 
@@ -315,7 +331,9 @@ final class HomePainter {
     private void drawDock(Canvas c, Frame f) {
         List<HomeItem> items = f.items;
         int n = items.size();
-        Geom geom = dock(f.look.apps, n);
+        Geom geom = dock(f.look.apps, n, f.rows2);
+        boolean rows2 = geom.rows2;
+        float rowPitch = geom.th + 24;
         if (f.look.photo() && f.scene != null) material(c, f, geom.x, geom.y, geom.w, geom.h, 48, true);
         if (n == 0) {
             TextPaint p = g.font(type.manrope(500), 36, -.6f / 36, appInk(f));
@@ -327,7 +345,7 @@ final class HomePainter {
         boolean glass = f.look.glass();
         boolean tilesFocus = f.zone == Z_APPS, selected = f.zone == Z_UTIL || f.zone == Z_PREVIEW;
         float shelfL = geom.x + 16, shelfR = shelfL + geom.shelf;
-        float off = f.off;
+        float off = rows2 ? 0 : f.off;
         boolean fadeL = geom.broad && off > 0.5f, fadeR = geom.broad && off + geom.shelf < n * geom.pitch - 8 - 0.5f;
         int save = c.save();
         c.clipRect(shelfL, geom.y, shelfR, geom.y + geom.h);
@@ -335,11 +353,12 @@ final class HomePainter {
             float px = shelfL + f.plate * geom.pitch - off;
             boolean sel = f.zone == Z_UTIL;
             float opacity = f.zone == Z_PREVIEW ? .5f : 1f;
-            plate(c, f, px, geom.y + 16, geom.tw, geom.th, 32, opacity, sel);
+            plate(c, f, px, geom.y + 16 + (rows2 ? f.plateRow * rowPitch : 0), geom.tw, geom.th, 32, opacity, sel);
         }
         int ink = appInk(f);
         for (int i = 0; i < n; i++) {
-            float left = shelfL + i * geom.pitch - off;
+            float left = shelfL + (rows2 ? i % 5 : i) * geom.pitch - off;
+            float tileTop = geom.y + 16 + (rows2 ? (i / 5) * rowPitch : 0);
             if (left + geom.tw < shelfL - 1 || left > shelfR + 1) continue;
             boolean focus = tilesFocus && i == f.anchor, sel = selected && i == f.anchor;
             // CleanFrame masks the shelf edges (to 20 % over 132 px). Fading each tile by its
@@ -348,7 +367,7 @@ final class HomePainter {
             float center = left + geom.tw / 2;
             if (fadeL && center < shelfL + 132) edge = Math.min(edge, .2f + .8f * clamp((center - shelfL) / 132f, 0, 1));
             if (fadeR && center > shelfR - 132) edge = Math.min(edge, .2f + .8f * clamp((shelfR - center) / 132f, 0, 1));
-            drawTile(c, f, items.get(i), left, geom.y + 16, geom, focus, sel, ink, edge);
+            drawTile(c, f, items.get(i), left, tileTop, geom, focus, sel, ink, edge);
         }
         c.restoreToCount(save);
         // Icons-only: the focused app's name appears under the dock.
@@ -356,7 +375,7 @@ final class HomePainter {
             HomeItem item = items.get(f.anchor);
             TextPaint p = homeText(f, Type.PRIMARY, 36, -.6f / 36, ink);
             float w = Math.min(1640, p.measureText(item.label) + 8);
-            float center = shelfL + f.anchor * geom.pitch - off + geom.tw / 2;
+            float center = shelfL + (rows2 ? f.anchor % 5 : f.anchor) * geom.pitch - off + geom.tw / 2;
             float x = clamp(center - w / 2, 140, 1780 - w);
             shadowed(f, p, false);
             c.drawText(g.ellipsize(item.label, w), x + 4, g.baseline(p, 932, 44), p);
@@ -387,8 +406,18 @@ final class HomePainter {
             int ms = c.save();
             if (glass && focus) c.scale(1.04f, 1.04f, left + bx + bw / 2, top + by + bh / 2 - 3);
             if (glass && focus) c.translate(0, -3);
-            int iconColor = f.look.iconGlass ? Color2.fade(ink, opacity * .6f) : color;
-            marks.item(c, item, left + bx, top + by, bw, bh, size, iconColor, false, mono);
+            boolean original = f.look.colorIcons && item.icon != null;
+            int iconColor = f.look.iconGlass ? Color2.fade(ink, opacity * (original ? .8f : .6f)) : color;
+            if (original) {
+                // The app's own coloured logo; Clear makes it see-through.
+                float side = Math.min(Math.min(bw, bh), size * 1.25f);
+                float ix = left + bx + (bw - side) / 2, iy = top + by + (bh - side) / 2;
+                item.icon.setBounds(Math.round(ix), Math.round(iy), Math.round(ix + side), Math.round(iy + side));
+                item.icon.setAlpha(Color2.alpha(iconColor));
+                item.icon.draw(c);
+            } else {
+                marks.item(c, item, left + bx, top + by, bw, bh, size, iconColor, false, mono);
+            }
             c.restoreToCount(ms);
         }
         if (!Look.SHOW_ICONS.equals(apps)) {

@@ -85,7 +85,7 @@ public final class StageView extends View {
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
             S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21, S_FOLDER = 22, S_FOLDERS = 23, S_FOLDEDIT = 24, S_UPDATE = 25,
-            S_PANEL = 26, S_GENERAL = 27, S_FX = 28, S_NET = 29, S_ABOUT = 30, S_DISPLAY = 31;
+            S_PANEL = 26, S_GENERAL = 27, S_FX = 28, S_NET = 29, S_ABOUT = 30, S_DISPLAY = 31, S_SOUNDS = 32;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -100,6 +100,10 @@ public final class StageView extends View {
     private final Sfx sfx = new Sfx();
     private int panelFocus, popIndex = -1, netKind;
     private boolean netOnline;
+    private String popupTitle, popupSub, popupGlyph;
+    private Runnable popupAction;
+    private long popupAt;
+    private static final long POPUP_MS = 5000;
     private long panelOpenedAt, popAt;
     private final SheetPainter sheet;
 
@@ -113,7 +117,7 @@ public final class StageView extends View {
     private int homeZone = HomePainter.Z_APPS;
     private int util;
     private int listFirst;
-    private final Anim dockOff = new Anim(0), plate = new Anim(0), listOff = new Anim(0), lens = new Anim(0);
+    private final Anim dockOff = new Anim(0), plate = new Anim(0), plateRow = new Anim(0), listOff = new Anim(0), lens = new Anim(0);
     private String clock = "";
     private String greeting = "";
     /** HDMI inputs with a device plugged in; the Inputs control shows only when this is not empty. */
@@ -203,6 +207,7 @@ public final class StageView extends View {
         marks = new Marks(context);
         homePainter = new HomePainter(gfx, type, marks);
         panelPainter = new PanelPainter(gfx, type, marks);
+        sfx.setTheme(look.soundTheme);
         sheet = new SheetPainter(gfx, type, marks, homePainter);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -388,7 +393,7 @@ public final class StageView extends View {
                 || screen == S_SLIDESHOW || screen == S_APPS || screen == S_APPEDIT || screen == S_SEARCH || screen == S_LANG || screen == S_STYLE
                 || screen == S_FOLDER || screen == S_FOLDERS || screen == S_FOLDEDIT || screen == S_UPDATE
                 || screen == S_SETTINGS || screen == S_GENERAL || screen == S_FX || screen == S_NET
-                || screen == S_ABOUT || screen == S_DISPLAY;
+                || screen == S_ABOUT || screen == S_DISPLAY || screen == S_SOUNDS;
     }
 
     private long dur(long ms) { return look.motion ? Math.round(ms * (look.animLevel == 0 ? .6 : look.animLevel == 2 ? 1.35 : 1.0)) : 0; }
@@ -424,7 +429,7 @@ public final class StageView extends View {
         int n = homeItems.size();
         long d = animate ? dur(180) : 0;
         if (look.dock()) {
-            HomePainter.Geom geom = HomePainter.dock(look.apps, n);
+            HomePainter.Geom geom = HomePainter.dock(look.apps, n, twoRows());
             float target = HomePainter.dockOffset(geom, n, homeIndex, dockOff.target());
             if (d == 0) dockOff.jump(target); else dockOff.to(target, d);
         } else {
@@ -432,8 +437,19 @@ public final class StageView extends View {
             float target = listFirst * HomePainter.PH_PITCH;
             if (d == 0) listOff.jump(target); else listOff.to(target, d);
         }
-        if (d == 0) plate.jump(homeIndex); else plate.to(homeIndex, d);
+        boolean rows2 = twoRows();
+        float col = rows2 ? homeIndex % 5 : homeIndex, row = rows2 ? homeIndex / 5 : 0;
+        if (d == 0) {
+            plate.jump(col);
+            plateRow.jump(row);
+        } else {
+            plate.to(col, d);
+            plateRow.to(row, d);
+        }
     }
+
+    /** Two dock rows of up to five apps, only in the dock layout and only when switched on. */
+    private boolean twoRows() { return look.twoRows && look.dock() && homeItems.size() > 5; }
 
     private Set<String> homeKeySet() { return new HashSet<>(look.homeKeys()); }
 
@@ -487,6 +503,50 @@ public final class StageView extends View {
                 });
             }
         });
+    }
+
+    // ------------------------------------------------------------------ device popup
+
+    /** A card in the top right corner ("USB connected"), open with the red button or OK. */
+    public void showPopup(String glyph, String title, String sub, Runnable action) {
+        popupGlyph = glyph;
+        popupTitle = title;
+        popupSub = sub;
+        popupAction = action;
+        popupAt = SystemClock.uptimeMillis();
+        if (look.sound) sfx.hop(look.soundVolume / 100f);
+        invalidate();
+    }
+
+    /** Opens the media app chosen for USB and network, or the inputs list. */
+    public void openMedia() {
+        String pkg = look.mediaPackage();
+        HomeItem media = pkg == null ? null : byKey.get(pkg);
+        if (media != null) host.launch(media); else push(S_CONNECTED);
+    }
+
+    private void drawPopup(Canvas c, long now) {
+        if (popupTitle == null || saverOn) return;
+        long age = now - popupAt;
+        if (age > POPUP_MS + 350) {
+            popupTitle = null;
+            return;
+        }
+        float in = Math.min(1f, age / 320f);
+        float easeIn = 1f - (1f - in) * (1f - in) * (1f - in);
+        float out = age > POPUP_MS ? Math.min(1f, (age - POPUP_MS) / 350f) : 0f;
+        float alpha = easeIn * (1f - out);
+        float w = 600, h = 124, x = 1920 - 40 - w, y = 36 - (1f - easeIn) * 150f;
+        int save = c.save();
+        gfx.round(c, x, y, w, h, 30, Color2.fade(0xFF1A1C22, .94f * alpha));
+        gfx.hairline(c, x, y, w, h, 30, Color2.fade(0x38FFFFFF, alpha));
+        marks.glyph(c, popupGlyph, x + 30, y + 30, 64, Color2.fade(look.accentOn() ? look.accentColor(false) : 0xFFF6F1E7, alpha));
+        android.text.TextPaint tp = gfx.font(type.home(look.font, Type.PRIMARY), 30, 0f, Color2.fade(0xFFF6F1E7, alpha));
+        c.drawText(gfx.ellipsize(popupTitle, w - 150), x + 118, gfx.baseline(tp, y + 24, 40), tp);
+        android.text.TextPaint sp = gfx.font(type.home(look.font, Type.PRIMARY), 22, 0f, Color2.fade(0xFFF6F1E7, .72f * alpha));
+        c.drawText(gfx.ellipsize(popupSub, w - 150), x + 118, gfx.baseline(sp, y + 70, 30), sp);
+        c.restoreToCount(save);
+        postInvalidateOnAnimation();
     }
 
     // ------------------------------------------------------------------ quick panel and network
@@ -856,7 +916,8 @@ public final class StageView extends View {
             drawSheet(canvas, screen, now);
         }
         canvas.restoreToCount(save);
-        if (dockOff.running(now) || plate.running(now) || listOff.running(now) || lens.running(now)
+        drawPopup(canvas, now);
+        if (dockOff.running(now) || plate.running(now) || plateRow.running(now) || listOff.running(now) || lens.running(now)
                 || allFirst.running(now) || wallFirst.running(now) || edRightFirst.running(now) || fadeFrom != null) {
             postInvalidateOnAnimation();
         }
@@ -880,6 +941,8 @@ public final class StageView extends View {
         }
         f.items = homeItems;
         f.anchor = homeIndex;
+        f.rows2 = twoRows();
+        f.plateRow = plateRow.value(now);
         f.zone = homeItems.isEmpty() && zone == HomePainter.Z_APPS ? HomePainter.Z_UTIL : zone;
         int[] kinds = utilKinds();
         f.utilKinds = kinds;
@@ -1013,6 +1076,11 @@ public final class StageView extends View {
     private void updateNight() {
         night = look.night && Sun.isNight(System.currentTimeMillis(), 48.49, 9.21);
         invalidate();
+    }
+
+    private String soundThemeName(int theme) {
+        int[] names = {R.string.st_snd_pop, R.string.st_snd_glass, R.string.st_snd_marimba, R.string.st_snd_retro, R.string.st_snd_soft};
+        return s(names[Math.max(0, Math.min(names.length - 1, theme))]);
     }
 
     private String languageName(String code) {
@@ -1200,6 +1268,8 @@ public final class StageView extends View {
                 greet.forward = true;
                 sec.add(new Page.Opt(s(R.string.st_classic), host::openClassic));
                 sec.add(new Page.Opt(s(R.string.st_tv_settings), host::openTvSettings));
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_inputs_auto), look.autoInputs, v -> look.setAutoInputs(v));
                 p.hint = s(R.string.st_hint_select);
                 break;
             }
@@ -1216,6 +1286,13 @@ public final class StageView extends View {
                     Page.Opt o = sec.add(new Page.Opt(s(titles[i]), () -> push(target)));
                     o.forward = true;
                 }
+                p.sectionGap = 24;
+                toggleSection(p, s(R.string.st_color_icons), look.colorIcons, v -> look.setColorIcons(v));
+                toggleSection(p, s(R.string.st_two_rows), look.twoRows, v -> {
+                    boolean saved = look.setTwoRows(v);
+                    syncHomeScroll(false);
+                    return saved;
+                });
                 p.hint = s(R.string.st_hint_open);
                 break;
             }
@@ -1235,6 +1312,9 @@ public final class StageView extends View {
                     o.checked = look.animLevel == i;
                 }
                 toggleSection(p, s(R.string.st_sound), look.sound, v -> look.setSound(v));
+                Page.Opt theme = p.section(null, false).add(new Page.Opt(s(R.string.st_sound_theme) + ": " + soundThemeName(look.soundTheme),
+                        () -> push(S_SOUNDS)));
+                theme.forward = true;
                 Page.Section vol = p.section(s(R.string.st_volume), true);
                 int[] volumes = {25, 50, 75, 100};
                 for (int percent : volumes) {
@@ -1248,6 +1328,29 @@ public final class StageView extends View {
                         }
                     }));
                     o.checked = look.soundVolume == percent;
+                }
+                toggleSection(p, s(R.string.st_popups), look.popups, v -> look.setPopups(v));
+                p.hint = s(R.string.st_hint_apply);
+                break;
+            }
+            case S_SOUNDS: {
+                p = new Page(screen, s(R.string.st_cat_fx), s(R.string.st_sound_theme), false);
+                p.width = 1056;
+                p.top = 260;
+                p.rowHeight = 88;
+                Page.Section sec = p.section(null, false);
+                for (int i = 0; i < Sfx.THEMES; i++) {
+                    final int theme = i;
+                    Page.Opt o = sec.add(new Page.Opt(soundThemeName(i), () -> {
+                        if (look.setSoundTheme(theme)) {
+                            sfx.setTheme(theme);
+                            sfx.pop(Math.max(.3f, look.soundVolume / 100f));
+                            refreshPage();
+                        } else {
+                            host.toast(s(R.string.st_save_failed));
+                        }
+                    }));
+                    o.checked = look.soundTheme == i;
                 }
                 p.hint = s(R.string.st_hint_apply);
                 break;
@@ -2042,6 +2145,17 @@ public final class StageView extends View {
             if (event.getAction() == KeyEvent.ACTION_DOWN) { swallowKey = event.getKeyCode(); stopSaver(); }
             return true;
         }
+        if (popupTitle != null && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
+                && SystemClock.uptimeMillis() - popupAt < POPUP_MS
+                && (event.getKeyCode() == KeyEvent.KEYCODE_PROG_RED
+                || (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_CENTER && top() == S_HOME))) {
+            Runnable action = popupAction;
+            popupTitle = null;
+            if (look.sound) sfx.pop(look.soundVolume / 100f);
+            if (action != null) action.run();
+            invalidate();
+            return true;
+        }
         if (swallowKey == event.getKeyCode()) {
             if (event.getAction() == KeyEvent.ACTION_UP) swallowKey = -1;
             return true;
@@ -2133,6 +2247,20 @@ public final class StageView extends View {
         int n = homeItems.size();
         boolean dock = look.dock();
         if (homeZone == HomePainter.Z_APPS && n > 0) {
+            if (twoRows()) {
+                if (key == KeyEvent.KEYCODE_DPAD_DOWN && homeIndex < 5) {
+                    homeIndex = Math.min(n - 1, homeIndex + 5);
+                    syncHomeScroll(true);
+                    invalidate();
+                    return;
+                }
+                if (key == KeyEvent.KEYCODE_DPAD_UP && homeIndex >= 5) {
+                    homeIndex -= 5;
+                    syncHomeScroll(true);
+                    invalidate();
+                    return;
+                }
+            }
             int prev = dock ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_UP;
             int next = dock ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_DOWN;
             int toUtil = dock ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_RIGHT;
