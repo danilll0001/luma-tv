@@ -103,6 +103,73 @@ final class Marks {
 
     static String forPackage(String pkg) { return BY_PACKAGE.get(pkg); }
 
+    /**
+     * White silhouette of an app logo: the foreground layer of adaptive icons, otherwise everything that
+     * differs from the icon's background colour. Worker thread; null when it cannot be made.
+     */
+    static android.graphics.Bitmap monoLogo(android.graphics.drawable.Drawable icon) {
+        try {
+            final int size = 192;
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+            boolean adaptive = false;
+            if (android.os.Build.VERSION.SDK_INT >= 26 && icon instanceof android.graphics.drawable.AdaptiveIconDrawable) {
+                android.graphics.drawable.Drawable fg = ((android.graphics.drawable.AdaptiveIconDrawable) icon).getForeground();
+                if (fg != null) {
+                    int full = Math.round(size * 108f / 72f), shift = (full - size) / 2;
+                    fg.setBounds(-shift, -shift, -shift + full, -shift + full);
+                    fg.draw(canvas);
+                    adaptive = true;
+                }
+            }
+            if (!adaptive) {
+                icon.setBounds(0, 0, size, size);
+                icon.draw(canvas);
+            }
+            int[] px = new int[size * size];
+            bitmap.getPixels(px, 0, size, 0, 0, size, size);
+            int[] white = new int[px.length];
+            for (int i = 0; i < px.length; i++) white[i] = (px[i] & 0xFF000000) | 0x00FFFFFF;
+            int[] out = white;
+            if (!adaptive) {
+                long r = 0, gr = 0, b = 0;
+                int count = 0;
+                int[][] corners = {{4, 4}, {size - 5, 4}, {4, size - 5}, {size - 5, size - 5}};
+                for (int[] corner : corners) {
+                    int color = px[corner[1] * size + corner[0]];
+                    if (android.graphics.Color.alpha(color) > 200) {
+                        r += android.graphics.Color.red(color);
+                        gr += android.graphics.Color.green(color);
+                        b += android.graphics.Color.blue(color);
+                        count++;
+                    }
+                }
+                if (count > 0) {
+                    r /= count;
+                    gr /= count;
+                    b /= count;
+                    int[] diff = new int[px.length];
+                    int covered = 0;
+                    for (int i = 0; i < px.length; i++) {
+                        int a = android.graphics.Color.alpha(px[i]);
+                        if (a == 0) continue;
+                        int dist = (int) (Math.abs(android.graphics.Color.red(px[i]) - r)
+                                + Math.abs(android.graphics.Color.green(px[i]) - gr)
+                                + Math.abs(android.graphics.Color.blue(px[i]) - b));
+                        int alpha = Math.max(0, Math.min(255, (dist - 40) * 3)) * a / 255;
+                        if (alpha > 40) covered++;
+                        diff[i] = (alpha << 24) | 0x00FFFFFF;
+                    }
+                    if (covered > px.length / 50) out = diff;
+                }
+            }
+            bitmap.setPixels(out, 0, size, 0, 0, size, size);
+            return bitmap;
+        } catch (RuntimeException | OutOfMemoryError failed) {
+            return null;
+        }
+    }
+
     static boolean has(String id) { return id != null && DRAWABLE.containsKey(id); }
 
     /** Sorted ids of every bundled mark, for the "change icon" list. */

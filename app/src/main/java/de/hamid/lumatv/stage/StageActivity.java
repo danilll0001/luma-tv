@@ -72,7 +72,8 @@ public final class StageActivity extends Activity implements StageView.Host {
     private final TvInputManager.TvInputCallback inputCallback = new TvInputManager.TvInputCallback() {
         @Override public void onInputStateChanged(String inputId, int state) {
             Integer previous = inputStates.put(inputId, state);
-            refreshInputs();
+            main.removeCallbacks(inputRefresh);
+            main.postDelayed(inputRefresh, 500);
             boolean plugged = state == TvInputManager.INPUT_STATE_CONNECTED
                     || state == TvInputManager.INPUT_STATE_CONNECTED_STANDBY;
             boolean wasPlugged = previous != null && (previous == TvInputManager.INPUT_STATE_CONNECTED
@@ -80,12 +81,12 @@ public final class StageActivity extends Activity implements StageView.Host {
             if (plugged && previous != null && !wasPlugged && look.popups) {
                 String label = inputCache.get(inputId);
                 final String id = inputId;
-                stage.showPopup("inputs", label != null ? getString(R.string.st_pop_input, label) : getString(R.string.st_pop_hdmi),
-                        getString(R.string.st_pop_hint), () -> openInput(id));
+                notifyDevice("inputs", label != null ? getString(R.string.st_pop_input, label) : getString(R.string.st_pop_hdmi),
+                        () -> openInput(id));
             }
         }
-        @Override public void onInputAdded(String inputId) { refreshInputs(); }
-        @Override public void onInputRemoved(String inputId) { refreshInputs(); }
+        @Override public void onInputAdded(String inputId) { main.removeCallbacks(inputRefresh); main.postDelayed(inputRefresh, 500); }
+        @Override public void onInputRemoved(String inputId) { main.removeCallbacks(inputRefresh); main.postDelayed(inputRefresh, 500); }
     };
 
     private final Runnable clockTick = new Runnable() {
@@ -98,9 +99,16 @@ public final class StageActivity extends Activity implements StageView.Host {
 
     private final BroadcastReceiver packages = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            if (resumed) loadCatalog(); else catalogDirty = true;
+            main.removeCallbacks(packageReload);
+            main.postDelayed(packageReload, 1500);
         }
     };
+
+    private final Runnable packageReload = () -> {
+        if (resumed) loadCatalog(); else catalogDirty = true;
+    };
+
+    private final Runnable inputRefresh = this::refreshInputs;
 
     /** Applies the app language chosen in the settings (Deutsch, English, Russian) before anything is drawn. */
     @Override protected void attachBaseContext(Context base) {
@@ -176,6 +184,7 @@ public final class StageActivity extends Activity implements StageView.Host {
             registerReceiver(deviceReceiver, new android.content.IntentFilter("android.bluetooth.device.action.ACL_CONNECTED"));
             devicesRegistered = true;
         }
+        registerStorageNotice();
         android.content.SharedPreferences shared = getSharedPreferences("luma_home", MODE_PRIVATE);
         if (Build.VERSION.SDK_INT >= 31 && look.popups && !shared.getBoolean("stage_bt_asked", false)
                 && checkSelfPermission("android.permission.BLUETOOTH_CONNECT") != PackageManager.PERMISSION_GRANTED) {
@@ -362,7 +371,9 @@ public final class StageActivity extends Activity implements StageView.Host {
                     }
                 }
                 String customLabel = look.customLabel(pkg);
-                items.add(new HomeItem(pkg, customLabel != null ? customLabel : Marks.label(pkg, entry.label), entry, null, mark, icon));
+                HomeItem item = new HomeItem(pkg, customLabel != null ? customLabel : Marks.label(pkg, entry.label), entry, null, mark, icon);
+                if (mark == null && icon != null) item.mono = Marks.monoLogo(icon);
+                items.add(item);
             }
             boolean ps4Listed = false;
             for (Map.Entry<String, String> input : inputLabels.entrySet()) {
@@ -912,13 +923,48 @@ public final class StageActivity extends Activity implements StageView.Host {
         @Override public void onReceive(Context context, Intent intent) {
             if (!look.popups || intent.getAction() == null) return;
             if ("android.bluetooth.device.action.ACL_CONNECTED".equals(intent.getAction())) {
-                stage.showPopup("bluetooth", getString(R.string.st_pop_bt), getString(R.string.st_pop_hint),
-                        StageActivity.this::openBluetoothSettings);
+                notifyDevice("bluetooth", getString(R.string.st_pop_bt), StageActivity.this::openBluetoothSettings);
             } else {
-                stage.showPopup("usb", getString(R.string.st_pop_usb), getString(R.string.st_pop_hint), () -> stage.openMedia());
+                notifyDevice("usb", getString(R.string.st_pop_usb), () -> stage.openMedia());
             }
         }
     };
+
+    private final Map<String, Long> lastNotice = new java.util.HashMap<>();
+    private Object storageCallback;
+
+    /** One card per device kind and 8 seconds; the system sends bursts of broadcasts when something is plugged in. */
+    private void notifyDevice(String glyph, String title, Runnable action) {
+        if (!look.popups) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        Long last = lastNotice.get(glyph);
+        if (last != null && now - last < 8000) return;
+        lastNotice.put(glyph, now);
+        stage.showPopup(glyph, title, getString(R.string.st_pop_hint), action);
+    }
+
+    /** Android 11 and newer report plugged-in storage reliably through the storage manager. */
+    private void registerStorageNotice() {
+        if (Build.VERSION.SDK_INT < 30 || storageCallback != null) return;
+        try {
+            final android.os.storage.StorageManager manager =
+                    (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+            if (manager == null) return;
+            android.os.storage.StorageManager.StorageVolumeCallback callback = new android.os.storage.StorageManager.StorageVolumeCallback() {
+                @Override public void onStateChanged(android.os.storage.StorageVolume volume) {
+                    if (volume.isRemovable() && android.os.Environment.MEDIA_MOUNTED.equals(volume.getState())) {
+                        String name = volume.getDescription(StageActivity.this);
+                        notifyDevice("usb", name == null || name.isEmpty() ? getString(R.string.st_pop_usb)
+                                : getString(R.string.st_pop_input, name), () -> stage.openMedia());
+                    }
+                }
+            };
+            manager.registerStorageVolumeCallback(getMainExecutor(), callback);
+            storageCallback = callback;
+        } catch (RuntimeException unavailable) {
+            storageCallback = null;
+        }
+    }
 
     @Override public void openNetworkSettings() { openSettingsScreen(Settings.ACTION_WIFI_SETTINGS); }
 

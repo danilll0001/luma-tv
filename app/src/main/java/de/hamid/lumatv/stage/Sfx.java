@@ -10,12 +10,21 @@ import android.os.SystemClock;
 /** Short synthesized sounds in five themes (tick, pop, hop, back). Nothing is stored or downloaded. */
 final class Sfx {
     private static final int RATE = 22050;
-    static final int THEMES = 5;
+    static final int THEMES = 12;
     private final Handler main = new Handler(Looper.getMainLooper());
     private short[] tick, pop, hop, back;
     private long lastTick;
 
-    Sfx() { setTheme(0); }
+    private final short[][] blips = new short[6][];
+
+    Sfx() {
+        setTheme(0);
+        float[] notes = {392, 440, 494, 523, 587, 659};
+        for (int i = 0; i < blips.length; i++) blips[i] = tone(0, notes[i], notes[i] * 1.04f, 38, .14f, 5, 3);
+    }
+
+    /** One soft babble blip for the companion's speech; the index picks one of six pitches. */
+    void blip(float volume, int index) { play(blips[Math.abs(index) % blips.length], volume); }
 
     /** 0 Water, 1 Chime, 2 Wood, 3 Harp, 4 Air: soft, short and quiet enough to hear all day. */
     void setTheme(int theme) {
@@ -45,6 +54,52 @@ final class Sfx {
                 pop = tone(0, 330, 330, 240, .30f, 3, 40);
                 hop = tone(0, 262, 392, 320, .30f, 3, 60);
                 back = tone(0, 392, 262, 260, .28f, 3, 40);
+                break;
+            case 5:
+                tick = tone(4, 1175, 1175, 10, .05f, 8, 2);
+                pop = tone(4, 784, 784, 260, .30f, 7, 3);
+                hop = join(tone(4, 523, 523, 120, .26f, 7, 3), tone(4, 784, 784, 260, .30f, 7, 3));
+                back = join(tone(4, 784, 784, 110, .24f, 7, 3), tone(4, 523, 523, 240, .28f, 7, 3));
+                break;
+            case 6:
+                tick = tone(1, 2093, 2093, 10, .04f, 8, 2);
+                pop = tone(1, 1568, 1568, 260, .20f, 6, 4);
+                hop = join(tone(1, 1047, 1047, 110, .18f, 6, 4), tone(1, 1319, 1319, 110, .18f, 6, 4),
+                        tone(1, 1568, 1568, 300, .20f, 6, 4));
+                back = join(tone(1, 1568, 1568, 100, .17f, 6, 4), tone(1, 1319, 1319, 100, .17f, 6, 4),
+                        tone(1, 1047, 1047, 260, .19f, 6, 4));
+                break;
+            case 7:
+                tick = tone(5, 660, 660, 16, .04f, 5, 4);
+                pop = tone(5, 392, 392, 700, .28f, 3, 25);
+                hop = join(tone(5, 294, 294, 260, .24f, 3, 20), tone(5, 392, 392, 520, .26f, 3, 20));
+                back = join(tone(5, 392, 392, 220, .22f, 3, 20), tone(5, 294, 294, 480, .24f, 3, 20));
+                break;
+            case 8:
+                tick = tone(0, 2400, 2400, 10, .04f, 6, 2);
+                pop = join(tone(0, 1800, 2400, 70, .16f, 4, 5), tone(0, 2000, 2600, 90, .16f, 4, 5));
+                hop = join(tone(0, 1500, 2100, 80, .15f, 4, 5), tone(0, 1900, 2500, 110, .16f, 4, 5));
+                back = join(tone(0, 2200, 1700, 80, .14f, 4, 5), tone(0, 1900, 1500, 100, .14f, 4, 5));
+                break;
+            case 9:
+                tick = tone(6, 784, 784, 10, .05f, 7, 2);
+                pop = tone(6, 392, 392, 380, .26f, 5, 3);
+                hop = join(tone(6, 262, 262, 110, .22f, 5, 3), tone(6, 330, 330, 110, .22f, 5, 3),
+                        tone(6, 392, 392, 340, .26f, 5, 3));
+                back = join(tone(6, 392, 392, 100, .20f, 5, 3), tone(6, 330, 330, 100, .20f, 5, 3),
+                        tone(6, 262, 262, 300, .24f, 5, 3));
+                break;
+            case 10:
+                tick = tone(0, 1200, 900, 12, .05f, 5, 2);
+                pop = tone(0, 900, 450, 90, .30f, 6, 2);
+                hop = tone(0, 700, 1100, 120, .28f, 4, 10);
+                back = tone(0, 1100, 600, 110, .26f, 4, 8);
+                break;
+            case 11:
+                tick = tone(0, 330, 330, 20, .04f, 4, 8);
+                pop = tone(0, 262, 262, 380, .26f, 3, 70);
+                hop = tone(0, 196, 247, 460, .26f, 3, 110);
+                back = tone(0, 247, 196, 380, .24f, 3, 70);
                 break;
             default:
                 tick = tone(0, 700, 520, 24, .08f, 4, 4);
@@ -82,6 +137,9 @@ final class Sfx {
                 case 2: s = (Math.sin(phase) + .25 * Math.sin(phase * 2)) / 1.25; break;
                 case 3: s = (Math.sin(phase) + .5 * Math.sin(phase * 2) * Math.exp(-3 * t)
                         + .3 * Math.sin(phase * 3) * Math.exp(-5 * t)) / 1.8; break;
+                case 4: s = (Math.sin(phase) + .3 * Math.sin(phase * 2.76)) / 1.3; break;
+                case 5: s = (Math.sin(phase) + .6 * Math.sin(phase * 1.012)) / 1.6; break;
+                case 6: s = (Math.sin(phase) + .45 * Math.sin(phase * 2) + .2 * Math.sin(phase * 4)) / 1.65; break;
                 default: s = Math.sin(phase); break;
             }
             double env = Math.exp(-decay * t) * Math.min(1.0, i / attack) * Math.min(1.0, (n - i) / tail);

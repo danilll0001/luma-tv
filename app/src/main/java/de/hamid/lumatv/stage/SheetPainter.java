@@ -423,7 +423,7 @@ final class SheetPainter {
 
     // ------------------------------------------------------------------ Home editor
 
-    static final float ED_PITCH = 80;
+    static final float ED_PITCH = 76;
 
     void editor(Canvas c, Look look, Ink k, List<HomeItem> left, List<HomeItem> right, int zone, int leftIndex,
                 int rightIndex, boolean lifted, float rightFirst, String onLabel, String offLabel,

@@ -85,6 +85,8 @@ final class HomePainter {
 
     // ------------------------------------------------------------------ geometry
 
+    private final android.graphics.RectF iconRect = new android.graphics.RectF();
+
     /** Grey, slightly lifted version of a coloured logo (glass look). */
     private static final android.graphics.ColorMatrixColorFilter GREY = greyFilter();
 
@@ -423,7 +425,14 @@ final class HomePainter {
             boolean colored = f.look.colorIcons && !clearIcons && item.icon != null;
             boolean greyLogo = clearIcons && item.mark == null && item.icon != null;
             int iconColor = clearIcons ? Color2.fade(ink, opacity * .85f) : color;
-            if (colored || greyLogo) {
+            if (greyLogo && item.mono != null) {
+                float side = Math.min(Math.min(bw, bh), size * 1.1f);
+                float ix = left + bx + (bw - side) / 2, iy = top + by + (bh - side) / 2;
+                iconRect.set(ix, iy, ix + side, iy + side);
+                g.bitmap.setColorFilter(new android.graphics.PorterDuffColorFilter(iconColor, android.graphics.PorterDuff.Mode.SRC_IN));
+                c.drawBitmap(item.mono, null, iconRect, g.bitmap);
+                g.bitmap.setColorFilter(null);
+            } else if (colored || greyLogo) {
                 float side = Math.min(Math.min(bw, bh), size * 1.25f);
                 float ix = left + bx + (bw - side) / 2, iy = top + by + (bh - side) / 2;
                 item.icon.setBounds(Math.round(ix), Math.round(iy), Math.round(ix + side), Math.round(iy + side));

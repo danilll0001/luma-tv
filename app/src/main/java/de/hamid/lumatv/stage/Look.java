@@ -43,7 +43,7 @@ final class Look {
     static final List<String> ROTATIONS = Arrays.asList(ROT_FIXED, ROT_OPEN, ROT_5, ROT_15, ROT_60);
 
     /** Home holds one to nine apps, like CleanFrame. */
-    static final int HOME_MAX = 9;
+    static final int HOME_MAX = 10;
     static final String INPUT_PREFIX = "input:";
     static final String FOLDER_PREFIX = "folder:";
 
@@ -216,6 +216,16 @@ final class Look {
         popups = on;
         return true;
     }
+
+    /** Version of the introduction the person has finished or skipped; 0 = never. */
+    int tourDone() { return prefs.getInt("stage_tour_done_v1", 0); }
+
+    void setTourDone(int version) { prefs.edit().putInt("stage_tour_done_v1", version).commit(); }
+
+    /** Step to resume after the language changed; -1 = not running. */
+    int tourStep() { return prefs.getInt("stage_tour_step_v1", -1); }
+
+    void setTourStep(int step) { prefs.edit().putInt("stage_tour_step_v1", step).commit(); }
 
     boolean setNavSound(boolean on) {
         if (!prefs.edit().putBoolean(P + "nav_sound", on).commit()) return false;

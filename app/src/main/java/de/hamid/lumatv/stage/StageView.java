@@ -85,7 +85,7 @@ public final class StageView extends View {
     static final int S_HOME = 0, S_ALL = 1, S_SETTINGS = 2, S_BACKGROUND = 3, S_WALLPAPER = 4,
             S_ROTATION = 5, S_LAYOUT = 6, S_TYPE = 7, S_FOCUS = 8, S_EDITOR = 9, S_TV = 10,
             S_INPUTS = 11, S_PS4 = 12, S_CLOCK = 13, S_GREETING = 14, S_CONNECTED = 15, S_SLIDESHOW = 16, S_APPS = 17, S_APPEDIT = 18, S_SEARCH = 19, S_LANG = 20, S_STYLE = 21, S_FOLDER = 22, S_FOLDERS = 23, S_FOLDEDIT = 24, S_UPDATE = 25,
-            S_PANEL = 26, S_GENERAL = 27, S_FX = 28, S_NET = 29, S_ABOUT = 30, S_DISPLAY = 31, S_SOUNDS = 32;
+            S_PANEL = 26, S_GENERAL = 27, S_FX = 28, S_NET = 29, S_ABOUT = 30, S_DISPLAY = 31, S_SOUNDS = 32, S_TOUR = 33;
     static final int ED_HEAD = 0, ED_LEFT = 1, ED_REMOVE = 2, ED_RIGHT = 3;
     private static final int GROUPS = 6;
     private static final long WALL_DELAY = 200;
@@ -97,6 +97,9 @@ public final class StageView extends View {
     private final Marks marks;
     private final HomePainter homePainter;
     private final PanelPainter panelPainter;
+    private final TourPainter tourPainter;
+    private int tourStep = -1, tourFocus, tourBlipAt;
+    private long tourAt, pageAt;
     private final Sfx sfx = new Sfx();
     private int panelFocus, popIndex = -1, netKind;
     private boolean netOnline;
@@ -207,6 +210,7 @@ public final class StageView extends View {
         marks = new Marks(context);
         homePainter = new HomePainter(gfx, type, marks);
         panelPainter = new PanelPainter(gfx, type, marks);
+        tourPainter = new TourPainter(gfx, type);
         sfx.setTheme(look.soundTheme);
         sheet = new SheetPainter(gfx, type, marks, homePainter);
         setFocusable(true);
@@ -336,6 +340,7 @@ public final class StageView extends View {
         homeVisible = visible;
         if (visible) {
             lastInput = SystemClock.uptimeMillis();
+            if (top() == S_HOME && look.tourDone() < TOUR_VERSION) startTour(Math.max(0, look.tourStep()));
             if (look.recentFirst && top() == S_HOME) { rebuildHome(); homeIndex = 0; syncHomeScroll(false); }
             resumeRotation();
             scheduleSaverCheck();
@@ -361,6 +366,7 @@ public final class StageView extends View {
     private void push(int screen) {
         if (top() == S_HOME) pauseRotation();
         stack.add(screen);
+        pageAt = SystemClock.uptimeMillis();
         if (screen == S_EDITOR) enterEditor(null);
         if (screen == S_ALL) { allHead = false; allFocus = Math.min(allFocus, Math.max(0, catalog.size() - 1)); scrollAll(false); }
         if (screen == S_WALLPAPER) enterWallpaper();
@@ -374,6 +380,10 @@ public final class StageView extends View {
     }
 
     private void pop() {
+        if (top() == S_TOUR) {
+            if (tourStep > 0) goStep(tourStep - 1); else closeTour();
+            return;
+        }
         if (stack.size() <= 1) return;
         int leaving = top();
         if (leaving == S_WALLPAPER) { candidate = null; candidateBackdrop = null; wallToken++; applyWhenLoaded = false; }
@@ -503,6 +513,174 @@ public final class StageView extends View {
                 });
             }
         });
+    }
+
+    // ------------------------------------------------------------------ introduction
+
+    /** Raise when the introduction changes and should be shown again. */
+    private static final int TOUR_VERSION = 1;
+    private static final int TOUR_STEPS = 14;
+    private static final int[] TOUR_TITLES = {R.string.tour_t0, R.string.tour_t1, R.string.tour_t2, R.string.tour_t3,
+            R.string.tour_t4, R.string.tour_t5, R.string.tour_t6, R.string.tour_t7, R.string.tour_t8, R.string.tour_t9,
+            R.string.tour_t10, R.string.tour_t11, R.string.tour_t12, R.string.tour_t13};
+    private static final int[] TOUR_BODIES = {R.string.tour_b0, R.string.tour_b1, R.string.tour_b2, R.string.tour_b3,
+            R.string.tour_b4, R.string.tour_b5, R.string.tour_b6, R.string.tour_b7, R.string.tour_b8, R.string.tour_b9,
+            R.string.tour_b10, R.string.tour_b11, R.string.tour_b12, R.string.tour_b13};
+
+    private void startTour(int step) {
+        if (top() == S_TOUR || tourStep >= 0) return;
+        push(S_TOUR);
+        goStep(Math.max(0, Math.min(TOUR_STEPS - 1, step)));
+        if (look.sound) sfx.hop(look.soundVolume / 100f);
+    }
+
+    private void goStep(int step) {
+        tourStep = Math.max(0, Math.min(TOUR_STEPS - 1, step));
+        tourAt = SystemClock.uptimeMillis();
+        tourBlipAt = 0;
+        tourFocus = Math.max(0, tourOptions(tourStep).size() - (tourStep == TOUR_STEPS - 1 ? 1 : 2));
+        look.setTourStep(tourStep);
+        invalidate();
+    }
+
+    /** Ends the introduction (finished or skipped) and remembers it. */
+    private void closeTour() {
+        look.setTourDone(TOUR_VERSION);
+        look.setTourStep(-1);
+        tourStep = -1;
+        if (top() == S_TOUR) stack.remove(stack.size() - 1);
+        if (isPage(top())) refreshPage();
+        if (top() == S_HOME) {
+            syncHomeScroll(false);
+            resumeRotation();
+        }
+        invalidate();
+    }
+
+    private TourPainter.Option opt(String label, boolean on, Runnable action) {
+        TourPainter.Option option = new TourPainter.Option();
+        option.label = label;
+        option.on = on;
+        option.action = action;
+        return option;
+    }
+
+    private List<TourPainter.Option> tourOptions(int step) {
+        List<TourPainter.Option> list = new ArrayList<>();
+        switch (step) {
+            case 1:
+                for (final String code : Look.LANGUAGES) {
+                    list.add(opt(languageName(code), code.equals(look.language), () -> {
+                        if (!code.equals(look.language) && look.setLanguage(code)) host.languageChanged();
+                    }));
+                }
+                break;
+            case 2:
+                list.add(opt(s(R.string.tour_new_view), true, null));
+                list.add(opt(s(R.string.st_classic), false, () -> {
+                    closeTour();
+                    host.openClassic();
+                }));
+                break;
+            case 3: {
+                final boolean clear = look.glassUi && look.iconGlass;
+                list.add(opt(s(R.string.st_clear), clear, () -> {
+                    look.setGlassUi(true);
+                    look.setIconGlass(true);
+                }));
+                list.add(opt(s(R.string.tour_color), !clear, () -> {
+                    look.setGlassUi(false);
+                    look.setIconGlass(false);
+                }));
+                break;
+            }
+            case 4: {
+                int[] names = {R.string.st_accent_white, R.string.st_accent_gold, R.string.st_accent_coral,
+                        R.string.st_accent_mint, R.string.st_accent_sky, R.string.st_accent_lavender};
+                for (int i = 0; i < Look.ACCENTS.size(); i++) {
+                    final String value = Look.ACCENTS.get(i);
+                    list.add(opt(s(names[i]), value.equals(look.accent), () -> look.setAccent(value)));
+                }
+                break;
+            }
+            case 5:
+                list.add(opt(s(R.string.st_name_edit), false, host::editName));
+                list.add(opt(s(R.string.st_birthday), false, host::editBirthday));
+                break;
+            case 6:
+                list.add(opt(s(R.string.st_photos_pick), false, host::pickPhotos));
+                break;
+            case 8:
+                list.add(opt(s(R.string.st_on), look.netIcon, () -> look.setNetIcon(true)));
+                list.add(opt(s(R.string.st_greeting_off), !look.netIcon, () -> look.setNetIcon(false)));
+                break;
+            case 9:
+                list.add(opt(s(R.string.st_on), look.sound, () -> look.setSound(true)));
+                list.add(opt(s(R.string.st_greeting_off), !look.sound, () -> look.setSound(false)));
+                list.add(opt(s(R.string.tour_theme), false, () -> {
+                    int next = (look.soundTheme + 1) % Sfx.THEMES;
+                    if (look.setSoundTheme(next)) {
+                        sfx.setTheme(next);
+                        sfx.pop(Math.max(.3f, look.soundVolume / 100f));
+                    }
+                }));
+                break;
+            case 10: {
+                int[] names = {R.string.st_anim_calm, R.string.st_anim_normal, R.string.st_anim_ultra};
+                for (int i = 0; i < 3; i++) {
+                    final int level = i;
+                    list.add(opt(s(names[i]), look.animLevel == i, () -> look.setAnimLevel(level)));
+                }
+                break;
+            }
+            case 11:
+                list.add(opt(s(R.string.st_on), look.popups, () -> look.setPopups(true)));
+                list.add(opt(s(R.string.st_greeting_off), !look.popups, () -> look.setPopups(false)));
+                break;
+            default:
+                break;
+        }
+        if (step == TOUR_STEPS - 1) {
+            list.add(opt(s(R.string.tour_finish), false, this::closeTour));
+        } else {
+            list.add(opt(s(R.string.tour_next), false, () -> goStep(tourStep + 1)));
+            list.add(opt(s(R.string.tour_skip), false, this::closeTour));
+        }
+        return list;
+    }
+
+    private void drawTour(Canvas c, long now) {
+        if (tourStep < 0) return;
+        List<TourPainter.Option> options = tourOptions(tourStep);
+        String title = s(TOUR_TITLES[tourStep]), body = s(TOUR_BODIES[tourStep]);
+        int total = title.length() + body.length();
+        long since = now - tourAt;
+        int shown = look.motion ? (int) Math.min(total, Math.max(0, (since - 350) / 26)) : total;
+        if (shown > tourBlipAt) {
+            if (look.sound && shown % 3 == 0 && shown < total) sfx.blip(look.soundVolume / 100f, shown / 3);
+            tourBlipAt = shown;
+        }
+        tourPainter.draw(c, look, now, since, title, body, shown, shown < total, options,
+                Math.min(tourFocus, options.size() - 1), tourStep, TOUR_STEPS);
+        postInvalidateOnAnimation();
+    }
+
+    private void tourKey(int key) {
+        if (tourStep < 0) return;
+        List<TourPainter.Option> options = tourOptions(tourStep);
+        tourFocus = Math.max(0, Math.min(tourFocus, options.size() - 1));
+        if (key == KeyEvent.KEYCODE_DPAD_CENTER) {
+            TourPainter.Option option = options.get(tourFocus);
+            if (look.sound) sfx.pop(look.soundVolume / 100f);
+            if (option.action != null) option.action.run();
+            invalidate();
+        } else if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_UP) {
+            if (tourFocus > 0) tourFocus--;
+            invalidate();
+        } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT || key == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (tourFocus < options.size() - 1) tourFocus++;
+            invalidate();
+        }
     }
 
     // ------------------------------------------------------------------ device popup
@@ -908,12 +1086,23 @@ public final class StageView extends View {
         int screen = top();
         if (saverOn) {
             drawSaver(canvas, now);
-        } else if (screen == S_HOME || screen == S_PANEL) {
+        } else if (screen == S_HOME || screen == S_PANEL || screen == S_TOUR) {
             ensureBackdrop();
-            homePainter.draw(canvas, homeFrame(screen == S_PANEL ? HomePainter.Z_NONE : homeZone, scene, backdrop, now));
+            homePainter.draw(canvas, homeFrame(screen == S_HOME ? homeZone : HomePainter.Z_NONE, scene, backdrop, now));
             if (screen == S_PANEL) drawPanel(canvas, now);
+            if (screen == S_TOUR) drawTour(canvas, now);
         } else {
-            drawSheet(canvas, screen, now);
+            float enter = look.motion ? Math.min(1f, (now - pageAt) / Math.max(1f, dur(240))) : 1f;
+            if (enter < 1f) {
+                float ease = 1f - (1f - enter) * (1f - enter) * (1f - enter);
+                int layer = canvas.saveLayerAlpha(0, 0, 1920, 1080, Math.round(255 * ease));
+                canvas.translate((1f - ease) * 56f, 0);
+                drawSheet(canvas, screen, now);
+                canvas.restoreToCount(layer);
+                postInvalidateOnAnimation();
+            } else {
+                drawSheet(canvas, screen, now);
+            }
         }
         canvas.restoreToCount(save);
         drawPopup(canvas, now);
@@ -1079,7 +1268,9 @@ public final class StageView extends View {
     }
 
     private String soundThemeName(int theme) {
-        int[] names = {R.string.st_snd_pop, R.string.st_snd_glass, R.string.st_snd_marimba, R.string.st_snd_retro, R.string.st_snd_soft};
+        int[] names = {R.string.st_snd_pop, R.string.st_snd_glass, R.string.st_snd_marimba, R.string.st_snd_retro, R.string.st_snd_soft,
+                R.string.st_snd_kalimba, R.string.st_snd_musicbox, R.string.st_snd_bowl, R.string.st_snd_bird, R.string.st_snd_piano,
+                R.string.st_snd_drop, R.string.st_snd_cloud};
         return s(names[Math.max(0, Math.min(names.length - 1, theme))]);
     }
 
@@ -1268,6 +1459,11 @@ public final class StageView extends View {
                 greet.forward = true;
                 sec.add(new Page.Opt(s(R.string.st_classic), host::openClassic));
                 sec.add(new Page.Opt(s(R.string.st_tv_settings), host::openTvSettings));
+                Page.Opt again = sec.add(new Page.Opt(s(R.string.st_tour_again), () -> {
+                    look.setTourDone(0);
+                    startTour(0);
+                }));
+                again.forward = true;
                 p.sectionGap = 24;
                 toggleSection(p, s(R.string.st_inputs_auto), look.autoInputs, v -> look.setAutoInputs(v));
                 p.hint = s(R.string.st_hint_select);
@@ -1336,23 +1532,25 @@ public final class StageView extends View {
             case S_SOUNDS: {
                 p = new Page(screen, s(R.string.st_cat_fx), s(R.string.st_sound_theme), false);
                 p.width = 1056;
-                p.top = 260;
-                p.rowHeight = 88;
-                Page.Section sec = p.section(null, false);
-                for (int i = 0; i < Sfx.THEMES; i++) {
-                    final int theme = i;
-                    Page.Opt o = sec.add(new Page.Opt(soundThemeName(i), () -> {
-                        if (look.setSoundTheme(theme)) {
-                            sfx.setTheme(theme);
-                            sfx.pop(Math.max(.3f, look.soundVolume / 100f));
-                            refreshPage();
-                        } else {
-                            host.toast(s(R.string.st_save_failed));
-                        }
-                    }));
-                    o.checked = look.soundTheme == i;
+                p.top = 212;
+                p.rowHeight = 76;
+                p.sectionGap = 16;
+                for (int row = 0; row < 3; row++) {
+                    Page.Section sec = p.section(null, true);
+                    for (int i = row * 4; i < row * 4 + 4; i++) {
+                        final int theme = i;
+                        Page.Opt o = sec.add(new Page.Opt(soundThemeName(i), () -> {
+                            if (look.setSoundTheme(theme)) {
+                                sfx.setTheme(theme);
+                                sfx.pop(Math.max(.3f, look.soundVolume / 100f));
+                                refreshPage();
+                            } else {
+                                host.toast(s(R.string.st_save_failed));
+                            }
+                        }));
+                        o.checked = look.soundTheme == i;
+                    }
                 }
-                p.sectionGap = 24;
                 toggleSection(p, s(R.string.st_navsound), look.navSound, v -> look.setNavSound(v));
                 p.hint = s(R.string.st_hint_apply);
                 break;
@@ -2238,6 +2436,7 @@ public final class StageView extends View {
         switch (top()) {
             case S_HOME: homeKey(key); break;
             case S_PANEL: panelKey(key); break;
+            case S_TOUR: tourKey(key); break;
             case S_WALLPAPER: wallpaperKey(key); break;
             case S_ALL: allKey(key); break;
             case S_EDITOR: editorKey(key); break;

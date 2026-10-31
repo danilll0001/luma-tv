@@ -14,6 +14,8 @@ final class HomeItem {
     final String mark;
     /** The installed app icon, used in All apps when there is no bundled mark. */
     final Drawable icon;
+    /** White silhouette of the logo for the glass look (apps without a bundled mark). */
+    android.graphics.Bitmap mono;
 
     HomeItem(String key, String label, AppEntry app, String inputId, String mark, Drawable icon) {
         this.key = key;
